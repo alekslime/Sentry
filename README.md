@@ -438,7 +438,7 @@ pip install -e ".[speech,llm,vision,tts,windows,dev]"
 python -m pytest tests/ -q
 ```
 
-There are 92 tests covering settings, the LLM engine's message assembly, vision
+There are 99 tests covering settings, the Iris-to-Sentry data migration, the LLM engine's message assembly, vision
 and OCR, TTS, memory, timing, transcription and hotkey parsing. They fake the
 heavy models, so they run without GPUs or weights. The Qt-related parts have
 mostly been verified with an offscreen Qt platform (`QT_QPA_PLATFORM=offscreen`)
