@@ -1,4 +1,4 @@
-"""Iris application entry point.
+"""Sentry application entry point.
 
 Responsible only for wiring things together:
     1. Load configuration.
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 # `voice.service` depends on the optional "speech" extras (openwakeword,
 # sounddevice, faster-whisper) — see pyproject.toml and docs/DECISIONS.md.
-# Import it defensively so Iris still launches with just the core
+# Import it defensively so Sentry still launches with just the core
 # dependencies installed; voice activation is simply unavailable in that case.
 try:
     from voice.service import VoiceActivationService
@@ -62,7 +62,7 @@ except ImportError:
 
 # `llm.engine` depends on the optional "llm" extra (llama-cpp-python) — see
 # pyproject.toml and docs/DECISIONS.md. Same defensive-import treatment as
-# voice, above — Iris still launches without it, just without generated
+# voice, above — Sentry still launches without it, just without generated
 # responses.
 try:
     from llm.engine import LLMEngine
@@ -75,7 +75,7 @@ except ImportError:
 # `vision.capture` / `vision.model` depend on the optional "vision" extra
 # (mss, onnxruntime, huggingface_hub, tokenizers) — see pyproject.toml and
 # docs/DECISIONS.md. Same defensive-import treatment as voice/llm above —
-# Iris still launches without it, just without screen-context awareness.
+# Sentry still launches without it, just without screen-context awareness.
 # Screen capture is additionally gated behind `settings.vision.enabled`
 # (opt-in, off by default) even when the extra IS installed — see
 # `config/schema.py:VisionSettings`.
@@ -107,7 +107,7 @@ except ImportError:
 
 # `tts.engine` depends on the optional "tts" extra (piper-tts, sounddevice)
 # — see pyproject.toml and docs/DECISIONS.md. Same defensive-import
-# treatment as voice/llm/vision above — Iris still launches without it,
+# treatment as voice/llm/vision above — Sentry still launches without it,
 # just without spoken responses (text-only, as before this milestone).
 try:
     from tts.engine import TTSEngine
@@ -210,7 +210,7 @@ def main() -> int:
     # replacing the placeholder NullAuraRenderer. Falls back to
     # NullAuraRenderer on any construction/initialize failure -- same
     # graceful-degradation shape as the LLM/vision pipelines above, since a
-    # missing visual is far less important than Iris staying usable at all.
+    # missing visual is far less important than Sentry staying usable at all.
     try:
         renderer = GlowAuraRenderer()
         aura = AuraController(renderer=renderer)
@@ -385,7 +385,7 @@ def main() -> int:
     # Milestone 8: local voice output (Piper). Loaded eagerly, same
     # graceful-degradation shape as the LLM/vision models above — a failed
     # load (or the extra not being installed) leaves tts_engine = None and
-    # Iris simply stays text-only, as it already was before this milestone.
+    # Sentry simply stays text-only, as it already was before this milestone.
     tts_engine = None
     if not settings.tts.enabled:
         logger.info("Voice output disabled (tts.enabled=false in config).")

@@ -164,7 +164,7 @@ class VoiceActivationService:
         """Begin listening for the wake word. Call once during app startup.
 
         Returns True if voice activation started successfully, False if it
-        could not (e.g. no microphone present, permission denied). Iris
+        could not (e.g. no microphone present, permission denied). Sentry
         should continue running without voice activation in that case
         rather than crashing — the rest of the app doesn't depend on it.
         """

@@ -1,6 +1,6 @@
 """Manual, throwaway preview for the Dynamic Island widget (Part A).
 
-This is NOT part of Iris itself and is not wired into main.py -- it just
+This is NOT part of Sentry itself and is not wired into main.py -- it just
 shows the widget standalone so you can eyeball the real color/frosted-
 glass look on an actual monitor before we decide anything about Part B's
 real activation triggers (global hotkey / wake word).

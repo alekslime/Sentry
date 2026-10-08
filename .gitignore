@@ -22,7 +22,7 @@ models/
 *.onnx
 *.bin
 
-# Iris runtime data (screenshots, memory db) — never committed by design
+# Runtime data (screenshots, memory db) — never committed by design
 data/
 *.db
 *.sqlite3
@@ -31,7 +31,9 @@ data/
 .DS_Store
 Thumbs.db
 
-# Dev-fallback app data (config/paths.py uses ./.iris_data off Windows)
+# Dev-fallback app data (config/paths.py uses ./.sentry_data off Windows;
+# .iris_data is the pre-rename name)
+.sentry_data/
 .iris_data/
 
 # Local output of test_vision.py (run from repo root)

@@ -13,10 +13,12 @@ keys, no subscription.
 The colored glow around the screen edge is **Aura**. It changes color to show
 what Sentry is doing: listening, thinking, speaking, or hit a problem.
 
-> **A note on the name.** This project used to be called Iris, and parts of the
-> code still say so: the window title, the `%APPDATA%\Iris` data folder, the
-> `iris` console command, and the assistant's own system prompt. Everything
-> works the same. The cleanup just hasn't happened yet.
+> **A note on the name.** This project used to be called Iris. If you ran an
+> older version, your data folder is moved from `%APPDATA%\Sentry` to
+> `%APPDATA%\Sentry` on first launch, and the console command is now `sentry`
+> (run `pip install -e .` again to get it). Your existing `config.yaml` keeps
+> its old values, so it may still say `app_name: Iris` and tell the assistant
+> "You are Iris". Edit those two spots, or delete the file to regenerate it.
 
 ## Contents
 
@@ -251,7 +253,7 @@ Models are downloaded and cached the first time they're used.
 On first launch, Sentry writes a config file you can edit:
 
 ```
-%APPDATA%\Iris\config\config.yaml
+%APPDATA%\Sentry\config\config.yaml
 ```
 
 The defaults ship in [`config/default_config.yaml`](config/default_config.yaml),
@@ -345,7 +347,7 @@ cursor stays inside it for about four seconds, and otherwise times out by itself
 Nothing leaves your machine: no telemetry, no account, no cloud calls. The only
 network use is downloading models the first time.
 
-On Windows, everything lives under `%APPDATA%\Iris\`:
+On Windows, everything lives under `%APPDATA%\Sentry\`:
 
 | Folder | Contents |
 | --- | --- |
@@ -426,7 +428,7 @@ Things worth knowing:
 | New defaults not taking effect | Your existing `config.yaml` keeps old values. Edit it or delete it to regenerate. |
 | Crash while sending two queries quickly | Fixed with a guard that refuses the second query. Not yet re-tested on real hardware, so please report it if you still see it. |
 
-Logs live in `%APPDATA%\Iris\logs\`.
+Logs live in `%APPDATA%\Sentry\logs\`.
 
 ## Development and tests
 

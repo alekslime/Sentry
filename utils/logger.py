@@ -1,4 +1,4 @@
-"""Application-wide logging setup for Iris.
+"""Application-wide logging setup for Sentry.
 
 Call `setup_logging()` exactly once, early in `main.py`, before any other
 module logs anything. Every other module should just do:
@@ -46,7 +46,7 @@ def setup_logging(settings: LoggingSettings) -> None:
         root_logger.addHandler(console_handler)
 
     if settings.file:
-        log_path = LOG_DIR / "iris.log"
+        log_path = LOG_DIR / "sentry.log"
         file_handler = RotatingFileHandler(
             log_path,
             maxBytes=settings.max_bytes,

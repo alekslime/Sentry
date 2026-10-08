@@ -1,4 +1,4 @@
-"""Typed configuration schema for Iris.
+"""Typed configuration schema for Sentry.
 
 Every configurable aspect of the app is declared here as a Pydantic model.
 This gives us validation, sane defaults, and autocompletion everywhere the
@@ -40,7 +40,7 @@ class VoiceSettings(BaseModel):
 
     `wake_word_model` accepts either a bundled stock model name (e.g.
     "hey_jarvis", used as a placeholder during development) or a full path
-    to a custom-trained `.onnx` model (e.g. a "Hey Iris" model trained via
+    to a custom-trained `.onnx` model (e.g. a "Hey Sentry" model trained via
     https://openwakeword.com/train). Swapping between them requires no code
     changes — see `voice/wake_word.py:resolve_model_path`.
     """
@@ -163,7 +163,7 @@ class LLMSettings(BaseModel):
     )
     system_prompt: str = Field(
         default=(
-            "You are Iris, a local AI desktop copilot -- not a chatbot describing "
+            "You are Sentry, a local AI desktop copilot -- not a chatbot describing "
             "a screenshot. You may be given a screen description and/or verbatim "
             "on-screen text alongside the user's question; use these silently to "
             "make your answer specific, but never narrate them back (avoid "
@@ -199,7 +199,7 @@ class VisionSettings(BaseModel):
         default=False,
         description=(
             "Master switch for screen-context awareness. When false (the "
-            "default), Iris never captures the screen at all -- opt-in, "
+            "default), Sentry never captures the screen at all -- opt-in, "
             "not opt-out. When true, a screenshot is captured and captioned "
             "alongside every voice/debug query and folded into the LLM prompt."
         ),
@@ -218,7 +218,7 @@ class VisionSettings(BaseModel):
         description=(
             "Developer aid only. When true, each capture is also written "
             "to disk under debug_screenshot_dir for inspection. Off by "
-            "default -- screenshots are discarded after use, per Iris's "
+            "default -- screenshots are discarded after use, per Sentry's "
             "privacy-by-default principle."
         ),
     )
@@ -422,11 +422,11 @@ class TTSSettings(BaseModel):
     enabled: bool = Field(
         default=True,
         description=(
-            "Master switch for voice output. Iris is voice-first by design "
+            "Master switch for voice output. Sentry is voice-first by design "
             "(see README.md), so this defaults on -- unlike vision.enabled, "
             "there's no privacy reason to default it off. Still fully "
             "optional: if the tts extra isn't installed, or the voice model "
-            "fails to load, Iris falls back to text-only responses (as it "
+            "fails to load, Sentry falls back to text-only responses (as it "
             "already did before this milestone), same graceful-degradation "
             "shape as llm_engine/vision_model above."
         ),
@@ -540,7 +540,7 @@ class IslandSettings(BaseModel):
             "app/hotkey.py:parse_hotkey (\"+\"-separated, e.g. "
             "\"ctrl+alt+i\"). Windows-only currently -- see "
             "docs/DECISIONS.md. If parsing fails or the OS-level "
-            "registration fails (e.g. already bound by another app), Iris "
+            "registration fails (e.g. already bound by another app), Sentry "
             "logs a warning and continues without it; the wake word "
             "trigger below is unaffected either way."
         ),
@@ -557,12 +557,12 @@ class IslandSettings(BaseModel):
 
 
 class DebugSettings(BaseModel):
-    """Developer-only debug aids. None of this is part of Iris's intended
+    """Developer-only debug aids. None of this is part of Sentry's intended
     end-user UX (which uses Aura + system tray, no visible windows or chat
     boxes) — it exists purely to make development/testing easier before
     voice input is convenient to test with (e.g. during meetings, or
     before a working microphone setup exists). Should default to disabled
-    once Iris has real end-user-facing UI.
+    once Sentry has real end-user-facing UI.
     """
 
     enabled: bool = Field(
@@ -578,7 +578,7 @@ class AppSettings(BaseModel):
     constructed by `config.settings.load_settings()`.
     """
 
-    app_name: str = Field(default="Iris")
+    app_name: str = Field(default="Sentry")
     version: str = Field(default="0.1.0")
     first_run: bool = Field(default=True, description="Set to False after first successful launch.")
 

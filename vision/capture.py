@@ -39,7 +39,7 @@ class ScreenCapture:
 
         Opens and closes its own `mss` context per call rather than holding
         one open across calls — screen capture here is occasional
-        (triggered per user query, not continuous, per Iris's
+        (triggered per user query, not continuous, per Sentry's
         no-continuous-monitoring privacy principle), so the small per-call
         setup cost isn't worth the complexity of a long-lived handle.
 

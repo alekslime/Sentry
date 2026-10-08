@@ -1,12 +1,12 @@
 """Minimal placeholder application window.
 
-Per the project's UX philosophy, Iris should ultimately feel like part of
+Per the project's UX philosophy, Sentry should ultimately feel like part of
 the OS rather than a traditional app window — this window exists only to
 prove the application launches during early milestones, and (when
 `debug.enabled` is on) to provide a text-based way to exercise the
 wake-word → listen → transcribe pipeline without needing to speak.
 
-That debug input is a developer aid only, not part of Iris's intended UX.
+That debug input is a developer aid only, not part of Sentry's intended UX.
 It's expected to be hidden (via `debug.enabled = false` in config) or
 removed once the real Aura + system-tray interaction model exists.
 """

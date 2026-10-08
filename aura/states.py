@@ -1,7 +1,7 @@
 """Defines the states Aura can communicate and their associated colors.
 
 This module has zero dependency on rendering or AI logic — it is pure data,
-shared by whatever decides Iris's state (voice/LLM/vision modules, later)
+shared by whatever decides Sentry's state (voice/LLM/vision modules, later)
 and whatever renders it (aura/renderer).
 """
 
@@ -18,7 +18,7 @@ class RGB(NamedTuple):
 
 
 class AuraState(Enum):
-    """The high-level state Iris is currently in, as communicated by Aura."""
+    """The high-level state Sentry is currently in, as communicated by Aura."""
 
     IDLE = "idle"
     LISTENING = "listening"

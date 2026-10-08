@@ -1,4 +1,4 @@
-"""Loads and persists Iris's configuration.
+"""Loads and persists Sentry's configuration.
 
 Usage:
     from config.settings import get_settings
@@ -7,7 +7,7 @@ Usage:
 
 Load order:
     1. Bundled `config/default_config.yaml` (always present, version controlled).
-    2. User's `%APPDATA%/Iris/config/config.yaml` (created on first run, editable).
+    2. User's `%APPDATA%/Sentry/config/config.yaml` (created on first run, editable).
        Values here override the defaults.
 
 The merged result is validated against `AppSettings` so the rest of the
@@ -59,7 +59,7 @@ def _backfill_missing(user: dict[str, Any], defaults: dict[str, Any]) -> tuple[d
 
     Existing user values are never touched or reordered, even if the
     corresponding default has since changed -- only genuinely missing keys
-    (e.g. a whole new settings section added in a later version of Iris)
+    (e.g. a whole new settings section added in a later version of Sentry)
     are added. Returns the possibly-updated dict and whether anything
     changed, so the caller can skip rewriting the file when nothing did.
     """
@@ -81,7 +81,7 @@ def load_settings() -> AppSettings:
     Creates the user config file on first run so it exists for the user to
     edit going forward. On later runs, if the schema has grown since the
     user's file was created (new settings sections/fields added in a newer
-    version of Iris), those missing keys are backfilled into the existing
+    version of Sentry), those missing keys are backfilled into the existing
     file so they show up for editing -- without touching any values the
     user has already customized. See docs/DECISIONS.md.
     """
@@ -104,7 +104,7 @@ def load_settings() -> AppSettings:
         if changed:
             logger.info(
                 "User config at %s is missing keys introduced by a newer version of "
-                "Iris -- backfilling them without touching your existing settings.",
+                "Sentry -- backfilling them without touching your existing settings.",
                 USER_CONFIG_FILE,
             )
             _write_yaml(USER_CONFIG_FILE, backfilled)

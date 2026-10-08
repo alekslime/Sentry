@@ -48,7 +48,7 @@ DEFAULT_REPEAT_PENALTY = 1.3
 # the same three-way sync problem applies to prompts, not just settings
 # values, so if you change one of these, change all three (2026-07-17).
 DEFAULT_SYSTEM_PROMPT = (
-    "You are Iris, a local AI desktop copilot -- not a chatbot describing a "
+    "You are Sentry, a local AI desktop copilot -- not a chatbot describing a "
     "screenshot. You may be given a screen description and/or verbatim "
     "on-screen text alongside the user's question; use these silently to "
     "make your answer specific, but never narrate them back (avoid phrases "

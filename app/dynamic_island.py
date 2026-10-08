@@ -6,7 +6,7 @@ Milestone 10 (reframed, 2026-07-16): this replaces the original "generic
 settings screen wrapping config/" plan. Settings now live *inside* this
 island (a button revealed in its expanded state, see `docs/DECISIONS.md`)
 rather than in a separate always-visible panel, and this widget also
-becomes Iris's new default-visible surface, retiring `app/main_window.py`'s
+becomes Sentry's new default-visible surface, retiring `app/main_window.py`'s
 always-on debug window (Part D of this milestone).
 
 This is Part A's static shell plus a slice of Part B: two visual states
@@ -20,7 +20,7 @@ island instead of the placeholder window now). See `set_state()`/
 `expand()`/`collapse()`/`toggle()` for the public surface, and
 `text_submitted` for the debug input's output signal.
 
-Deliberately independent of `aura/`: `AuraRenderer` communicates Iris's
+Deliberately independent of `aura/`: `AuraRenderer` communicates Sentry's
 *ambient state* via full-screen edge color (see `aura/renderer/base.py`),
 which has no concept of layout, text, icons, or expand/collapse -- trying
 to express the island through that interface would mean bolting arbitrary
@@ -326,7 +326,7 @@ class DynamicIslandWidget(QWidget):
         title_font.setPointSizeF(title_font.pointSizeF() + 3)
         title_font.setBold(True)
         painter.setFont(title_font)
-        painter.drawText(margin, margin + 14, "Iris")
+        painter.drawText(margin, margin + 14, "Sentry")
 
         # When the real debug QLineEdit exists, it occupies this space
         # (see DEBUG_INPUT_TOP_PX) -- the static hint line would either

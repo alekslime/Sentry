@@ -3,7 +3,7 @@ edges, color-coded per `AuraState`, built from an actual Gaussian blur,
 tinted with a slowly-rotating multicolor gradient (rather than a flat
 color) and cross-faded smoothly between states.
 
-Replaces `NullAuraRenderer` as Iris's default renderer (Milestone 6). Built
+Replaces `NullAuraRenderer` as Sentry's default renderer (Milestone 6). Built
 as a frameless, click-through, always-on-top top-level widget painted with
 QPainter/`QGraphicsBlurEffect` rather than a literal custom GPU shader
 pipeline -- see docs/DECISIONS.md for why this still satisfies the

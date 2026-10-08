@@ -11,10 +11,10 @@ Model resolution supports two cases:
       models are NOT bundled in the pip package — they're downloaded once
       from GitHub release assets on first use and cached locally
       thereafter. This is a one-time setup download, not runtime cloud
-      inference — it doesn't conflict with Iris's offline-first principle,
+      inference — it doesn't conflict with Sentry's offline-first principle,
       but it does mean the very first run needs an internet connection.
     - A custom-trained model, referenced by a full path to a `.onnx` file
-      (e.g. a "Hey Iris" model trained via https://openwakeword.com/train).
+      (e.g. a "Hey Sentry" model trained via https://openwakeword.com/train).
       This is a drop-in swap: point config at the new file, no code changes,
       no download needed.
 

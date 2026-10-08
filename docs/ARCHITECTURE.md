@@ -6,9 +6,8 @@ Sentry is a modular, local-first desktop application. Each top-level package
 owns one concern and talks to the others through small, explicit interfaces
 rather than reaching into their internals.
 
-(The project was called Iris until recently. Some module docstrings, the
-`%APPDATA%\Iris` data folder and the `iris` console script still use the old
-name.)
+(The project was called Iris until recently. `config/paths.py` moves an old
+`%APPDATA%\Iris` data folder to `%APPDATA%\Sentry` on first launch.)
 
 ```
 Sentry/
@@ -64,7 +63,7 @@ that fails for any reason.
 
 `config/default_config.yaml` is version-controlled and ships with the repo. On
 first run, `config/settings.py` writes a user-editable copy to
-`%APPDATA%\Iris\config\config.yaml` (or `.iris_data/` inside the repo on
+`%APPDATA%\Sentry\config\config.yaml` (or `.sentry_data/` inside the repo on
 non-Windows dev machines). User values override defaults, and the merged result
 is validated against the `AppSettings` Pydantic schema in `config/schema.py`
 before anything else touches it.

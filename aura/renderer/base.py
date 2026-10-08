@@ -1,6 +1,6 @@
 """Defines the interface every Aura renderer must implement.
 
-Aura is intentionally decoupled from the rest of Iris: the AI/voice/vision
+Aura is intentionally decoupled from the rest of Sentry: the AI/voice/vision
 logic only ever talks to an `AuraRenderer`, never to rendering internals.
 This means the actual GPU-rendered ambient glow (a later milestone) can be
 swapped in behind this interface without touching any other module, and

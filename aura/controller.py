@@ -1,4 +1,4 @@
-"""The single point of contact between Iris's AI/voice/vision logic and
+"""The single point of contact between Sentry's AI/voice/vision logic and
 whatever is currently rendering Aura.
 
 Nothing outside `aura/` should ever import a renderer directly — everything

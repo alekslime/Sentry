@@ -1,12 +1,12 @@
-# Iris default configuration.
+# Sentry default configuration.
 #
 # This file is bundled with the repository and used as the source of
-# defaults. It is NOT edited at runtime. On first launch, Iris copies the
+# defaults. It is NOT edited at runtime. On first launch, Sentry copies the
 # active values into a user-writable config.yaml (see config/paths.py).
 # Edit that generated file to change settings — not this one, unless you are
 # changing the defaults for all users.
 
-app_name: Iris
+app_name: Sentry
 version: "0.1.0"
 first_run: true
 
@@ -22,7 +22,7 @@ aura:
   theme: default
 
 voice:
-  wake_word_model: hey_jarvis  # placeholder until a custom "Hey Iris" model is trained
+  wake_word_model: hey_jarvis  # placeholder until a custom "Hey Sentry" model is trained
   detection_threshold: 0.5
   consecutive_frames_required: 2
   cooldown_seconds: 1.5
@@ -48,7 +48,7 @@ llm:
   max_tokens: 512
   repeat_penalty: 1.3  # fixes exact-repeat loops seen on Qwen2.5-0.5B once the prompt grows large (screen caption + OCR + history). See config/schema.py.
   system_prompt: >-
-    You are Iris, a local AI desktop copilot -- not a chatbot describing a
+    You are Sentry, a local AI desktop copilot -- not a chatbot describing a
     screenshot. You may be given a screen description and/or verbatim
     on-screen text alongside the user's question; use these silently to
     make your answer specific, but never narrate them back (avoid phrases

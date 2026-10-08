@@ -1,4 +1,4 @@
-"""Standalone vision pipeline diagnostic for Iris.
+"""Standalone vision pipeline diagnostic for Sentry.
 
 Run this directly (not through main.py). Two modes:
 

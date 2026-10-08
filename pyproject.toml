@@ -1,7 +1,7 @@
 [project]
-name = "iris"
+name = "sentry"
 version = "0.1.0"
-description = "Iris — a fully local, voice-first AI desktop copilot for Windows."
+description = "Sentry — a fully local, voice-first AI desktop copilot for Windows."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
@@ -51,7 +51,7 @@ dev = [
 ]
 
 [project.scripts]
-iris = "main:main"
+sentry = "main:main"
 
 [build-system]
 requires = ["setuptools>=68.0"]
