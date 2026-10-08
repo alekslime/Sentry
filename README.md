@@ -6,7 +6,7 @@ screen, and it takes a screenshot, figures out what it's looking at, and
 answers. No cloud, no API keys, no subscription.
 
 <p align="center">
-  <img src="docs/assets/screenshots/aura-in-use.png" alt="Sentry's Aura glow around the screen while working in Adobe Premiere" width="90%">
+  <img src="docs/assets/aura-in-use.png" alt="Sentry's Aura glow around the screen while working in Adobe Premiere" width="90%">
 </p>
 
 That colored glow around the edge of the screen is **Aura**, the overlay that
@@ -27,9 +27,9 @@ you see below is a placeholder that will eventually be replaced by the Aura
 overlay and a tray icon.
 
 <p align="center">
-  <img src="docs/assets/screenshots/idle-window.png" alt="Sentry's placeholder window, idle" width="380">
+  <img src="docs/assets/idle-window.png" alt="Sentry's placeholder window, idle" width="380">
   &nbsp;&nbsp;
-  <img src="docs/assets/screenshots/response-window.png" alt="Sentry's placeholder window after answering a question about a Premiere Pro project" width="380">
+  <img src="docs/assets/response-window.png" alt="Sentry's placeholder window after answering a question about a Premiere Pro project" width="380">
 </p>
 
 <p align="center"><sub>Left: idle. Right: after asking about a Premiere Pro timeline. (The window title still says "Iris", the project's old name.)</sub></p>
@@ -70,7 +70,7 @@ hears the wake word, then **THINKING** while it transcribes and generates, then
 back to **IDLE**.
 
 <p align="center">
-  <img src="docs/assets/screenshots/aura-overlay.png" alt="The Aura overlay on its own" width="60%">
+  <img src="docs/assets/aura-overlay.png" alt="The Aura overlay on its own" width="60%">
 </p>
 
 ## Hardware
