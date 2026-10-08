@@ -9,7 +9,6 @@ env/
 *.egg-info/
 build/
 dist/
-*.egg-info
 
 .vscode/
 .idea/
@@ -31,3 +30,11 @@ data/
 .env
 .DS_Store
 Thumbs.db
+
+# Dev-fallback app data (config/paths.py uses ./.iris_data off Windows)
+.iris_data/
+
+# Local output of test_vision.py (run from repo root)
+debug_full.png
+debug_shrunk_*.png
+locate_samples.jsonl
