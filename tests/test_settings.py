@@ -21,7 +21,7 @@ from pathlib import Path
 import yaml
 
 import config.settings as settings_module
-from config.settings import _backfill_missing, load_settings
+from config.settings import _backfill_missing, _rename_legacy_values, load_settings
 
 
 def test_backfill_missing_adds_new_top_level_section() -> None:
@@ -117,3 +117,47 @@ def test_load_settings_does_not_rewrite_file_when_up_to_date(tmp_path, monkeypat
     after = user_file.read_text()
 
     assert before == after
+
+
+def test_rename_legacy_values_updates_name_and_prompt_phrase_only() -> None:
+    user = {
+        "app_name": "Iris",
+        "llm": {"system_prompt": "You are Iris, a local AI desktop copilot. Be brief."},
+        "aura": {"theme": "midnight"},
+    }
+
+    result, changed = _rename_legacy_values(user)
+
+    assert changed is True
+    assert result["app_name"] == "Sentry"
+    assert result["llm"]["system_prompt"] == "You are Sentry, a local AI desktop copilot. Be brief."
+    assert result["aura"] == {"theme": "midnight"}
+    assert user["app_name"] == "Iris", "input must not be mutated"
+
+
+def test_rename_legacy_values_leaves_custom_values_alone() -> None:
+    user = {"app_name": "My Assistant", "llm": {"system_prompt": "Talk like a pirate."}}
+
+    result, changed = _rename_legacy_values(user)
+
+    assert changed is False
+    assert result == user
+
+
+def test_load_settings_migrates_legacy_name_in_user_file(tmp_path, monkeypatch) -> None:
+    default_file = tmp_path / "default_config.yaml"
+    default_file.write_text(yaml.safe_dump({"app_name": "Sentry", "aura": {"theme": "default"}}))
+
+    user_file = tmp_path / "config.yaml"
+    user_file.write_text(yaml.safe_dump({"app_name": "Iris", "aura": {"theme": "midnight"}}))
+
+    monkeypatch.setattr(settings_module, "DEFAULT_CONFIG_FILE", default_file)
+    monkeypatch.setattr(settings_module, "USER_CONFIG_FILE", user_file)
+    monkeypatch.setattr(settings_module, "ensure_app_directories", lambda: None)
+
+    settings = load_settings()
+
+    assert settings.app_name == "Sentry"
+    rewritten = yaml.safe_load(user_file.read_text())
+    assert rewritten["app_name"] == "Sentry"
+    assert rewritten["aura"]["theme"] == "midnight"

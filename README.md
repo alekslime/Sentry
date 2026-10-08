@@ -16,9 +16,10 @@ what Sentry is doing: listening, thinking, speaking, or hit a problem.
 > **A note on the name.** This project used to be called Iris. If you ran an
 > older version, your data folder is moved from `%APPDATA%\Sentry` to
 > `%APPDATA%\Sentry` on first launch, and the console command is now `sentry`
-> (run `pip install -e .` again to get it). Your existing `config.yaml` keeps
-> its old values, so it may still say `app_name: Iris` and tell the assistant
-> "You are Iris". Edit those two spots, or delete the file to regenerate it.
+> (run `pip install -e .` again to get it). Your existing `config.yaml` comes
+> along, and the old name in it (`app_name: Iris` and "You are Iris," in the
+> system prompt) is updated on first launch. The rest of your settings are
+> left as they were.
 
 ## Contents
 

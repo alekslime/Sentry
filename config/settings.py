@@ -75,6 +75,44 @@ def _backfill_missing(user: dict[str, Any], defaults: dict[str, Any]) -> tuple[d
     return result, changed
 
 
+# Wording baked into config.yaml files written before the Iris -> Sentry rename.
+# Saved values are never refreshed from the defaults, so without this a
+# migrated install would keep the old window title and assistant name forever.
+_LEGACY_APP_NAME = "Iris"
+_RENAMED_PHRASES = (("You are Iris,", "You are Sentry,"),)
+
+
+def _rename_legacy_values(user: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Update the old project name in a user config, touching nothing else.
+
+    Two cases only: a top-level `app_name` that is exactly "Iris", and the
+    phrase "You are Iris," inside any string value (the saved system
+    prompt). The rest of a customized prompt is left as the user wrote it.
+    Returns the possibly-updated dict and whether anything changed.
+    """
+
+    def walk(value: Any) -> tuple[Any, bool]:
+        if isinstance(value, dict):
+            changed = False
+            result: dict[str, Any] = {}
+            for key, item in value.items():
+                result[key], item_changed = walk(item)
+                changed = changed or item_changed
+            return result, changed
+        if isinstance(value, str):
+            updated = value
+            for old, new in _RENAMED_PHRASES:
+                updated = updated.replace(old, new)
+            return updated, updated != value
+        return value, False
+
+    result, changed = walk(user)
+    if result.get("app_name") == _LEGACY_APP_NAME:
+        result["app_name"] = "Sentry"
+        changed = True
+    return result, changed
+
+
 def load_settings() -> AppSettings:
     """Build an `AppSettings` instance from defaults + user overrides.
 
@@ -91,7 +129,7 @@ def load_settings() -> AppSettings:
     if not defaults:
         logger.warning("Default config file missing or empty at %s", DEFAULT_CONFIG_FILE)
 
-    user_overrides = _read_yaml(USER_CONFIG_FILE)
+    user_overrides, renamed = _rename_legacy_values(_read_yaml(USER_CONFIG_FILE))
     merged = _deep_merge(defaults, user_overrides)
 
     settings = AppSettings.model_validate(merged)
@@ -108,6 +146,9 @@ def load_settings() -> AppSettings:
                 USER_CONFIG_FILE,
             )
             _write_yaml(USER_CONFIG_FILE, backfilled)
+        elif renamed:
+            logger.info("Updated the old project name in %s", USER_CONFIG_FILE)
+            _write_yaml(USER_CONFIG_FILE, user_overrides)
 
     return settings
 
