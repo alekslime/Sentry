@@ -1547,3 +1547,42 @@ fix's new guaranteed condition) is itself entirely reliable, only that
 running two at once definitely isn't. Worth a clean single-query
 real-hardware pass to confirm no assert fires even under normal,
 non-overlapping use before considering this fully closed.
+
+## 2026-10-08 — Vision triggers: keywords first, LLM yes/no as a fallback
+
+**Problem.** Screen context only ran when the query contained one of
+`vision.trigger_keywords` (`screen, see, look, this, here`). "What's wrong
+with my timeline?" never said any of them, so Sentry answered without looking.
+
+**Decision.** `vision/triggers.py:decide_screen_context()` checks in this order:
+no keywords configured (always on), then a keyword match (free, always first),
+then, only for queries that matched nothing, one yes/no question to the same
+local LLM (`llm/screen_intent.py`, via `LLMEngine.classify_yes_no()`). Anything
+else skips the screen. Controlled by `vision.intent_classifier` (default true;
+false restores keyword-only behavior).
+
+**Why a fallback, not a replacement.** Keyword hits cost nothing and already
+work, so only the queries that are currently missed pay for a classifier call.
+The call is a few output tokens with greedy decoding and a fixed few-shot
+prompt, not a second full generation.
+
+**Failure behavior.** Any classifier error counts as "no", which is exactly
+what the app did before this existed. A wrong "yes" costs one unneeded vision
+pass; a wrong "no" is the old behavior.
+
+**Threading.** The classifier runs inside `_build_prompt_with_screen_context`,
+which is on `_generate_worker`'s thread, so it is covered by the reentrancy
+guard from 2026-07-23 and never touches the llama.cpp context concurrently with
+generation. Do not call it from the Qt main thread.
+
+**Alternatives considered.** Default-on (always run vision unless disabled):
+simplest and never wrong, but pays the full vision cost on every question.
+Classifier only (drop keywords): adds an LLM call to every query, including
+the ones keywords already get right.
+
+**Not verified.** Accuracy with the real model. `eval_screen_intent.py` runs a
+labeled question set through it and prints accuracy and per-call latency; run
+it on the machine with the LLM and edit the questions to match how you talk.
+If the small default LLM answers badly, set `vision.intent_classifier: false`
+or use a larger model.
+

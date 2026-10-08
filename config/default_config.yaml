@@ -82,6 +82,7 @@ vision:
   repeat_penalty: 1.3  # passed to describe()/locate(); fixes a real repeat-loop failure found 2026-07-17. See config/schema.py.
   caption_prompt: "You're describing a screenshot for another AI assistant to use as silent context, not for a person to read -- so skip narrating UI chrome (don't mention panels, windows, toolbars, or that something 'appears to be open'). Identify the specific application and task, then note whatever a domain expert would flag: for photo/video editing, exposure, color, composition, masking, pacing, or cuts; for code, structure, naming, logic, or bugs; for spreadsheets, formulas or references; for anything else, whatever's actually actionable. Be concrete and specific -- name the exact issue and where it is, not a generic visual summary."
   trigger_keywords: [screen, see, look, this, here]  # vision only runs if the query contains one of these (case-insensitive); [] = always run
+  intent_classifier: true  # if no trigger keyword matches, ask the LLM one yes/no question ("does this need the screen?") before skipping vision; false = keywords only
   locate_trigger_keywords: [where, find, point, show me, locate]  # locate() only runs if the query contains one of these (case-insensitive); [] = always attempt
   ocr_enabled: true  # also run Tesseract OCR for verbatim on-screen text, alongside the scene description
   ocr_min_confidence: 60.0  # minimum per-word Tesseract confidence (0-100) to include a word in OCR output

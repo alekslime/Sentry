@@ -214,3 +214,22 @@ class LLMEngine:
             len(history or []),
         )
         return text
+
+    def classify_yes_no(self, instructions: str, user_text: str, max_tokens: int = 4) -> bool:
+        """Ask a yes/no question and return True only if the reply starts with "yes".
+
+        Uses `instructions` as the system prompt (not the assistant's own),
+        greedy decoding, and a handful of output tokens, so it is cheap. An
+        empty, odd or "no" reply all come back False. Raises on inference
+        failure like `generate()`; callers decide how to degrade.
+        """
+        result = self._model.create_chat_completion(
+            messages=[
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": user_text},
+            ],
+            max_tokens=max_tokens,
+            temperature=0.0,
+        )
+        content = result["choices"][0]["message"]["content"] or ""
+        return content.strip().lower().startswith("yes")

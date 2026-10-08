@@ -364,6 +364,19 @@ class VisionSettings(BaseModel):
             "an empty list to run vision on every query (old behavior)."
         ),
     )
+    intent_classifier: bool = Field(
+        default=True,
+        description=(
+            "When a query matches none of trigger_keywords, ask the local LLM "
+            "one yes/no question (\"does this need the screen?\") before giving "
+            "up on screen context. Catches questions like \"what's wrong with "
+            "my timeline?\" that never say \"this\" or \"here\". Costs one tiny "
+            "extra LLM call on queries that matched no keyword, nothing on "
+            "keyword matches. Any failure counts as \"no\". Set to false for "
+            "keyword-only gating (the old behavior). Ignored when "
+            "trigger_keywords is empty (vision already runs on every query)."
+        ),
+    )
     enable_locate: bool = Field(
         default=False,
         description=(

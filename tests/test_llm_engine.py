@@ -177,3 +177,41 @@ def test_generate_none_history_behaves_like_empty_list(monkeypatch) -> None:
 
     sent_messages = fake_model.create_chat_completion.call_args.kwargs["messages"]
     assert len(sent_messages) == 2  # system + user only, no history entries
+
+
+# --- classify_yes_no (screen-intent fallback) --------------------------------
+
+
+def _engine_with_reply(reply):
+    engine_module = _import_engine()
+    engine = engine_module.LLMEngine.__new__(engine_module.LLMEngine)
+    engine._model = MagicMock()
+    engine._model.create_chat_completion.return_value = {
+        "choices": [{"message": {"content": reply}}]
+    }
+    return engine
+
+
+@pytest.mark.parametrize("reply", ["yes", "Yes.", "  YES\n", "yes, it does"])
+def test_classify_yes_no_true_for_yes_replies(reply) -> None:
+    assert _engine_with_reply(reply).classify_yes_no("instructions", "question") is True
+
+
+@pytest.mark.parametrize("reply", ["no", "No.", "", None, "maybe", "not sure"])
+def test_classify_yes_no_false_for_everything_else(reply) -> None:
+    assert _engine_with_reply(reply).classify_yes_no("instructions", "question") is False
+
+
+def test_classify_yes_no_sends_its_own_system_prompt_and_stays_cheap() -> None:
+    engine = _engine_with_reply("yes")
+    engine._system_prompt = "the assistant's normal prompt"
+
+    engine.classify_yes_no("only answer yes or no", "is this on screen?")
+
+    kwargs = engine._model.create_chat_completion.call_args.kwargs
+    assert kwargs["messages"] == [
+        {"role": "system", "content": "only answer yes or no"},
+        {"role": "user", "content": "is this on screen?"},
+    ]
+    assert kwargs["temperature"] == 0.0
+    assert kwargs["max_tokens"] <= 8

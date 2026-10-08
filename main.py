@@ -42,9 +42,11 @@ from aura.renderer.null_renderer import NullAuraRenderer
 from aura.states import AuraState
 from config.paths import DATA_DIR, MODELS_DIR
 from config.settings import get_settings
+from llm.screen_intent import needs_screen
 from memory.store import ConversationStore
 from utils.logger import setup_logging
 from utils.timing import TurnTimer
+from vision.triggers import decide_screen_context, keyword_match
 
 logger = logging.getLogger(__name__)
 
@@ -514,30 +516,37 @@ def main() -> int:
             return text
 
         vision_keywords = settings.vision.trigger_keywords
-        should_caption_or_ocr = not vision_keywords or any(
-            kw.lower() in text.lower() for kw in vision_keywords
-        )
-
         locate_keywords = settings.vision.locate_trigger_keywords
         should_locate = (
             settings.vision.enable_locate
             and vision_model is not None
-            and (not locate_keywords or any(kw.lower() in text.lower() for kw in locate_keywords))
+            and (not locate_keywords or keyword_match(text, locate_keywords))
         )
+
+        # Keywords first (free). Only a query that matched none of them
+        # reaches the LLM yes/no classifier, and only when a locate query
+        # isn't already going to the screen anyway. See vision/triggers.py.
+        classifier = None
+        if settings.vision.intent_classifier and llm_engine is not None and not should_locate:
+            classifier = lambda question: needs_screen(llm_engine, question)  # noqa: E731
+        decision = decide_screen_context(text, vision_keywords, classifier)
+        should_caption_or_ocr = decision.use_screen
 
         if not should_caption_or_ocr and not should_locate:
             logger.debug(
-                "Skipping screen context — query matched neither "
-                "vision.trigger_keywords %r nor vision.locate_trigger_keywords %r",
+                "Skipping screen context — %s (vision.trigger_keywords %r, "
+                "vision.locate_trigger_keywords %r)",
+                decision.reason,
                 vision_keywords,
                 locate_keywords,
             )
             return text
         logger.debug(
-            "Screen context triggered for query %r (locate=%s, caption/ocr=%s)",
+            "Screen context triggered for query %r (locate=%s, caption/ocr=%s: %s)",
             text,
             should_locate,
             should_caption_or_ocr,
+            decision.reason,
         )
 
         try:

@@ -31,7 +31,7 @@ The README has the short version. This file is the detail.
 | 10 Dynamic Island | Widget, global hotkey (`ctrl+shift+space`) and wake-word activation done. Part C (settings in the island) and Part D (retire `app/main_window.py`) open | README reports activation working. Island rendering verified offscreen only; see below |
 | 11 Realtime responsiveness | Part A (latency timing) done. B streaming TTS, C barge-in, D audio-synced Aura open | Vision went from 234s to about 4s per query (downscale to 512px, repeat penalty) |
 
-Test suite: 112 tests, all passing in a sandbox with PySide6 (offscreen),
+Test suite: 133 tests, all passing in a sandbox with PySide6 (offscreen),
 Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
 
 ## Recent changes (this session)
@@ -42,6 +42,8 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
   `%APPDATA%\Iris` folder to `%APPDATA%\Sentry` on first launch;
   `config/settings.py` updates the old name inside a migrated `config.yaml`.
 - Added `eval_locate.py` and `vision/locate_eval.py` to measure pointing accuracy.
+- Vision triggers: keywords first, then an LLM yes/no fallback for queries that
+  matched none (`vision/triggers.py`, `llm/screen_intent.py`).
 
 ## Known issues / not yet verified
 
@@ -62,9 +64,12 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
   have never been tuned or run on a real display.
 
 **Vision triggers**
-- Vision runs only if the question contains one of `vision.trigger_keywords`
-  (`screen, see, look, this, here`). "What's wrong with my timeline?" never
-  looks at the screen. Next task, see below.
+- Keyword matching is still substring-based, so "where" matches "here" and
+  "seem" matches "see". The new LLM fallback only helps queries that matched no
+  keyword; it cannot undo a false keyword hit.
+- The new fallback (`vision.intent_classifier`, default on) has **not been run
+  against the real LLM.** Run `python eval_screen_intent.py` where the model is
+  installed. If answers are poor, set it to false or use a larger model.
 
 **Rename and migration**
 - The `%APPDATA%\Iris` to `%APPDATA%\Sentry` move and the config name update
@@ -90,9 +95,9 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
 
 ## Next up
 
-1. **Smarter vision triggers.** Replace keyword matching with a cheap
-   classifier (or default-on with the hotkey as an override). Check the latency
-   cost on real hardware before choosing.
+1. **Check the vision-trigger fallback on real hardware.** Run
+   `python eval_screen_intent.py`, then try a few real questions with the
+   debug box and watch the log line saying why vision did or did not run.
 2. **Real-hardware pass:** confirm the Windows data-folder migration, then run
    `eval_locate.py` and decide what to do about pointing (different grounding
    model, OCR boxes for text targets, or fix the coordinate conversion).

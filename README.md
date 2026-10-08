@@ -264,6 +264,7 @@ which is heavily commented. The settings you're most likely to touch:
 | --- | --- | --- |
 | `vision.enabled` | `false` | Master switch for screen capture. Off until you turn it on. |
 | `vision.trigger_keywords` | `screen, see, look, this, here` | Vision only runs if your question contains one of these. `[]` means always. |
+| `vision.intent_classifier` | `true` | If no keyword matched, ask the LLM one yes/no question ("does this need the screen?") before skipping vision. Catches "what's wrong with my timeline?". `false` means keywords only. |
 | `vision.locate_trigger_keywords` | `where, find, point, show me, locate` | Same idea for the pointing box. |
 | `vision.max_image_dimension` | `512` | Downscale captures before the vision model sees them. Big speed win. |
 | `vision.ocr_enabled` | `true` | Also read exact on-screen text with Tesseract. |
