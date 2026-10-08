@@ -116,3 +116,10 @@ def test_needs_screen_skips_the_engine_for_blank_text() -> None:
 def test_needs_screen_treats_engine_failure_as_no() -> None:
     engine = FakeClassifier(error=RuntimeError("inference blew up"))
     assert needs_screen(engine, "what's on my screen") is False
+
+
+def test_needs_screen_accepts_alternative_instructions() -> None:
+    engine = FakeClassifier(answer=True)
+    assert needs_screen(engine, "is my photo too dark?", instructions="custom prompt") is True
+    assert engine.calls == [("custom prompt", "is my photo too dark?")]
+

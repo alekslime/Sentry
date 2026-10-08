@@ -43,12 +43,20 @@ class YesNoClassifier(Protocol):
     def classify_yes_no(self, instructions: str, user_text: str) -> bool: ...
 
 
-def needs_screen(engine: YesNoClassifier, text: str) -> bool:
-    """True if the LLM thinks `text` needs the screen. False on any failure."""
+def needs_screen(
+    engine: YesNoClassifier,
+    text: str,
+    instructions: str = SCREEN_INTENT_INSTRUCTIONS,
+) -> bool:
+    """True if the LLM thinks `text` needs the screen. False on any failure.
+
+    `instructions` can be swapped to try a different prompt (see
+    `eval_screen_intent.py`); the app itself always uses the default.
+    """
     if not text.strip():
         return False
     try:
-        answer = engine.classify_yes_no(SCREEN_INTENT_INSTRUCTIONS, text)
+        answer = engine.classify_yes_no(instructions, text)
     except Exception:
         logger.exception("Screen-intent classifier failed; treating the query as not needing the screen.")
         return False
