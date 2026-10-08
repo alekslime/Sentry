@@ -1,38 +1,50 @@
-# Iris - WORKING!!!!!!!!!!!!!!!!!!!!!!!!
+# Sentry
 
 A fully local, voice-first AI desktop copilot for Windows.
 
-Iris runs entirely on your machine — no cloud inference, no paid APIs, no
-subscriptions, no external AI providers. You say "Hey Iris," ask a question
-about what's on your screen, and Iris captures a screenshot, reasons about
+Sentry runs entirely on your machine: no cloud inference, no paid APIs, no
+subscriptions, no external AI providers. Say the wake word, ask a question
+about what's on your screen, and Sentry captures a screenshot, reasons about
 it with local models, and guides you visually and by voice.
 
 ## Status
 
-🚧 Early development. Milestone 5 (screen capture + vision) is complete
-and working on real hardware, using MiniCPM-V-2.6 (via llama.cpp) for
-scene description plus Tesseract OCR for verbatim on-screen text —
-see [`HANDOFF.md`](HANDOFF.md) for the latest state. Some
-verification items are still open (see [`docs/TODO.md`](docs/TODO.md)),
-and a few docs there still describe an earlier ONNX-based version of the
-vision model — `HANDOFF.md` is the source of truth until those are
-refreshed. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's done and
-what's next.
+🚧 **Early development.** Milestone 5 (screen capture + vision) is complete and
+working on real hardware. Vision uses MiniCPM-V-2.6 (via llama.cpp) for scene
+description, plus Tesseract OCR for verbatim on-screen text.
+
+- Latest state: [`HANDOFF.md`](HANDOFF.md) (source of truth)
+- Open verification items: [`docs/TODO.md`](docs/TODO.md)
+- What's done and what's next: [`docs/ROADMAP.md`](docs/ROADMAP.md)
+
+> Some docs under `docs/` still describe an earlier ONNX-based vision model.
+> Until they're refreshed, `HANDOFF.md` wins.
 
 ## Core principles
 
 - **Everything runs locally.** No cloud inference, no paid APIs, no subscriptions.
-- **Offline-first.** Iris works with no internet connection.
+- **Offline-first.** Works with no internet connection.
 - **Privacy by default.** No continuous screen or audio monitoring. Screenshots
   are analyzed and discarded unless you explicitly choose to keep one.
 - **Modular.** Every major component (voice, vision, LLM, Aura) is swappable.
 
+## How it works
+
+1. **Wake word**: OpenWakeWord listens for the trigger phrase.
+2. **Speech to text**: Faster-Whisper transcribes your question.
+3. **Screen capture**: MSS grabs a screenshot (only when vision is enabled).
+4. **Vision**: MiniCPM-V-2.6 describes the scene; Tesseract extracts exact text.
+5. **Reasoning**: a local LLM (llama.cpp) answers using the transcript and screen context.
+6. **Response**: shown in the UI and spoken back, while Aura reflects the current
+   state (IDLE → LISTENING → THINKING → IDLE).
+
 ## Target hardware
 
 Developed and tuned for:
-- RTX 3070 Ti (8GB VRAM)
-- Ryzen 7 5700X
-- 32GB DDR4 RAM
+
+- NVIDIA RTX 3070 Ti (8 GB VRAM)
+- AMD Ryzen 7 5700X
+- 32 GB DDR4 RAM
 - Windows 11
 
 ## Tech stack
@@ -43,6 +55,9 @@ OpenWakeWord, MSS, OpenCV, Tesseract OCR, SQLite.
 ## Getting started (development)
 
 ```bash
+git clone https://github.com/alekslime/Sentry.git
+cd Sentry
+
 # Core dependencies only (enough to launch the app, no wake word detection)
 pip install -e .
 
@@ -50,43 +65,43 @@ pip install -e .
 python main.py
 ```
 
-To enable wake word detection ("Hey Jarvis" as a placeholder — a custom
-"Hey Iris" model can be trained later at https://openwakeword.com/train and
-dropped in via config with no code changes):
+### Wake word and speech
 
 ```bash
 pip install -e ".[speech]"
 python main.py
 ```
 
-Say "Hey Jarvis" — Aura should transition through LISTENING (wake word
-heard) → THINKING (your speech is transcribed, then a response is
-generated) → back to IDLE. The response appears in the placeholder
-window and is logged to the console.
+"Hey Jarvis" is used as a placeholder wake word. A custom model can be trained
+at https://openwakeword.com/train and dropped in via config with no code changes.
 
-**Testing without speaking:** the placeholder window has a debug text
-input (on by default during development — see `debug.enabled` in config)
-that simulates a full voice command. Type something and hit Enter/Send —
-it drives Aura through the exact same LISTENING → THINKING → IDLE sequence
-real voice input would, no microphone or speaking required.
+Say the wake word and Sentry transitions through **LISTENING** (wake word heard)
+→ **THINKING** (speech transcribed, response generated) → **IDLE**. The response
+appears in the placeholder window and is logged to the console.
 
-To also enable local LLM responses (default model is a small ~1GB
-`Qwen2.5-0.5B-Instruct` GGUF, downloaded and cached on first use — see
-`config.yaml`'s `llm:` section to point at a different model):
+**Testing without speaking:** the placeholder window has a debug text input
+(on by default during development, see `debug.enabled` in config). Type
+something and press Enter/Send to drive the exact same LISTENING → THINKING →
+IDLE sequence as real voice input, with no microphone needed.
+
+### Local LLM responses
 
 ```bash
 pip install -e ".[speech,llm]"
 python main.py
 ```
 
-Without the `llm` extra installed, Iris still runs fine — voice/transcript
-handling works as before, and the response window just shows a
-"no LLM configured" placeholder instead of a generated reply.
+The default model is a small (~1 GB) `Qwen2.5-0.5B-Instruct` GGUF, downloaded
+and cached on first use. Point at a different model via the `llm:` section of
+`config.yaml`.
 
-To also enable screen-context awareness (Iris looks at a screenshot and
-folds a short caption into the prompt): install the `vision` extra, **and**
-turn it on in config — it's opt-in and off by default even with the extra
-installed, since it involves reading your screen (see `docs/DECISIONS.md`):
+Without the `llm` extra, Sentry still runs: voice and transcript handling work
+as before, and the response window shows a "no LLM configured" placeholder.
+
+### Screen awareness (vision)
+
+Vision is **opt-in and off by default**, even with the extra installed, because
+it involves reading your screen (see [`docs/DECISIONS.md`](docs/DECISIONS.md)).
 
 ```bash
 pip install -e ".[speech,llm,vision]"
@@ -98,11 +113,11 @@ vision:
   enabled: true
 ```
 
-The default captioning model (~250MB, ONNX) downloads and caches on first
-use, same as the LLM. Without `vision.enabled: true`, Iris never captures
-the screen at all, regardless of which extras are installed.
+Models are downloaded and cached on first use, same as the LLM. Tesseract OCR
+must be installed on the system separately. Without `vision.enabled: true`,
+Sentry never captures the screen, regardless of which extras are installed.
 
-Everything, including the Windows-only and dev-tooling extras:
+### Everything
 
 ```bash
 pip install -e ".[speech,llm,vision,windows,dev]"
@@ -110,11 +125,11 @@ pip install -e ".[speech,llm,vision,windows,dev]"
 
 ## Project structure
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a full breakdown of
-the folder structure and how modules relate to each other.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the folder structure and
+how modules relate to each other.
 
 ## Contributing
 
-Iris is built incrementally, one milestone at a time, with documentation
-kept in sync at every step. See `docs/DECISIONS.md` for the reasoning
-behind key architectural choices.
+Sentry is built incrementally, one milestone at a time, with documentation kept
+in sync at every step. See [`docs/DECISIONS.md`](docs/DECISIONS.md) for the
+reasoning behind key architectural choices.
