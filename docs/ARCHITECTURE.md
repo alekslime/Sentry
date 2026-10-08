@@ -2,209 +2,291 @@
 
 ## Overview
 
-Iris is a modular, local-first desktop application. Each top-level package
-owns one concern and communicates with the others through small, explicit
-interfaces rather than reaching into each other's internals.
+Sentry is a modular, local-first desktop application. Each top-level package
+owns one concern and talks to the others through small, explicit interfaces
+rather than reaching into their internals.
+
+(The project was called Iris until recently. Some module docstrings, the
+`%APPDATA%\Iris` data folder and the `iris` console script still use the old
+name.)
 
 ```
-iris/
+Sentry/
 │
-├── app/            Application shell: entry-point wiring, main window(s).
-├── aura/            Visual overlay system (independent from AI logic).
-│   ├── renderer/    Renderer interface + implementations. Real glow renderer done (Milestone 6).
-│   ├── shaders/     GPU shader code for the ambient glow (future milestone).
-│   ├── themes/      Theme definitions (colors, glow intensity, etc.) (future).
-│   └── animations/  Animation logic for state transitions, guidance cues (future).
-├── voice/           Wake word detection (OpenWakeWord) + mic capture. Done.
-├── speech/          Speech-to-text (Faster-Whisper) + silence detection. Done.
-├── llm/             Local LLM integration (llama.cpp). Done.
-├── vision/           Screen capture + vision model integration. Done, opt-in.
-├── overlay/         Visual guidance rendering: arrows, highlights, boxes (future).
-├── memory/          Conversation memory / SQLite persistence (future milestone).
-├── automation/      Future mouse/keyboard automation. Out of scope for MVP.
+├── main.py          Entry point. Wiring only; no feature logic.
+├── app/             Qt shell: windows, the Dynamic Island, hotkey, thread bridges.
+├── aura/            Visual overlay (independent from AI logic).
+│   ├── controller.py   The only thing other modules talk to.
+│   ├── states.py       AuraState enum + default state colors.
+│   ├── renderer/       Renderer interface, real glow renderer, no-op fallback.
+│   ├── animations/     (empty, reserved)
+│   ├── shaders/        (empty, reserved)
+│   └── themes/         (empty, reserved)
+├── voice/           Microphone stream + wake word detection (OpenWakeWord).
+├── speech/          Silence detection + speech-to-text (Faster-Whisper).
+├── llm/             Local LLM (llama.cpp), with optional chat history.
+├── vision/          Screen capture, MiniCPM-V scene description + locating, Tesseract OCR.
+├── tts/             Local text-to-speech (Piper) + playback.
+├── memory/          SQLite conversation store.
 ├── config/          Typed settings schema, YAML loading, path definitions.
-├── utils/           Cross-cutting utilities (currently: logging).
-├── assets/          Static assets (icons, fonts, bundled resources).
+├── utils/           Logging and per-turn latency timing.
+├── overlay/         (empty, reserved; the target box lives in aura/renderer for now)
+├── automation/      (empty, reserved; mouse/keyboard automation is out of MVP scope)
 ├── docs/            This documentation.
-├── tests/           Test suite.
-└── main.py          Application entry point.
+└── tests/           pytest suite.
 ```
 
 ## Key design decisions
 
 ### Aura is independent from AI logic
 
-Nothing in `voice/`, `llm/`, or `vision/` ever imports from `aura/renderer`
-directly. All communication goes through `aura.controller.AuraController`,
-which exposes a small state-based API (`set_state(AuraState.THINKING)`, etc.).
-This means:
+Nothing in `voice/`, `speech/`, `llm/`, `vision/` or `tts/` imports from
+`aura/renderer`. All communication goes through `aura.controller.AuraController`,
+which exposes a small state-based API (`set_state(AuraState.THINKING)`,
+`show_target_box(...)`, `clear_target_box()`). That means:
 
-- Aura's rendering implementation can change completely (e.g. from a no-op
-  to a real GPU shader renderer) without touching any other module.
-- Community-created Aura themes can eventually be swapped in without
-  touching application logic.
+- The rendering implementation can change completely without touching any
+  other module. It already did once, from a no-op to the real glow renderer.
+- Aura themes can eventually be swapped in without touching application logic.
 
-### Renderer interface, not a concrete renderer, ships first
+### Renderer interface first, implementations behind it
 
-`aura/renderer/base.py` defines the `AuraRenderer` abstract interface.
-`aura/renderer/null_renderer.py` is the only implementation so far — it logs
-what it would do instead of rendering anything. This lets the rest of the
-app (state transitions, the controller, main.py wiring) be built and tested
-now, and the real GPU-rendered glow can be dropped in later behind the same
-interface.
+`aura/renderer/base.py` defines the `AuraRenderer` interface. There are two
+implementations:
+
+- `null_renderer.py`: logs what it would do. Used as a fallback.
+- `glow_renderer.py`: the real thing (see "Aura rendering" below).
+
+`main.py` constructs the glow renderer and falls back to the null renderer if
+that fails for any reason.
 
 ### Config: bundled defaults + user overrides
 
-`config/default_config.yaml` is version-controlled and ships with the repo.
-On first run, `config/settings.py` writes a user-editable copy to
-`%APPDATA%/Iris/config/config.yaml` (or a local `.iris_data/` folder on
-non-Windows dev machines). User values override defaults; both are merged
-and validated against the `AppSettings` Pydantic schema in
-`config/schema.py` before anything else in the app touches them.
+`config/default_config.yaml` is version-controlled and ships with the repo. On
+first run, `config/settings.py` writes a user-editable copy to
+`%APPDATA%\Iris\config\config.yaml` (or `.iris_data/` inside the repo on
+non-Windows dev machines). User values override defaults, and the merged result
+is validated against the `AppSettings` Pydantic schema in `config/schema.py`
+before anything else touches it.
+
+Existing user files get newly added *keys* backfilled automatically, but not
+changed default *values* for keys they already have. If a release changes a
+default, users need to edit or regenerate their file.
+
+All filesystem locations come from `config/paths.py`; no module builds its own.
 
 ### Heavy dependencies are optional extras
 
-`pyproject.toml` keeps `faster-whisper`, `llama-cpp-python`, `mss`,
-`opencv-python`, `onnxruntime-gpu`, and `pywin32` as optional extras
-(`speech`, `llm`, `vision`, `windows`) rather than core dependencies. They
-get installed as the milestones that need them are built, keeping the
-environment lean during early development.
+`pyproject.toml` keeps the heavy, hardware-facing dependencies out of the core
+install and groups them as extras:
 
-This is enforced, not just documented: `main.py` imports `voice.service`
-inside a `try/except ImportError` block, so Iris still launches correctly
-with only core dependencies installed — voice activation is simply
-unavailable in that case, logged as a warning rather than a crash.
+| Extra | Contents |
+| --- | --- |
+| `speech` | faster-whisper, openwakeword, sounddevice |
+| `llm` | llama-cpp-python, huggingface_hub |
+| `vision` | mss, Pillow, opencv-python, llama-cpp-python, huggingface_hub, pytesseract |
+| `tts` | piper-tts, sounddevice |
+| `windows` | pywin32 |
+| `dev` | pytest, black, ruff, mypy |
 
-### Voice module structure (Milestone 2)
+This is enforced in code, not just documented: `main.py` imports `voice.service`,
+`llm.engine`, the vision modules and `tts.engine` inside `try/except ImportError`
+blocks, so Sentry still launches with only the core install. Whatever is missing
+is skipped and logged as a warning rather than crashing.
 
-`voice/` is split into three layers, each independently testable:
+### Everything crosses threads through Qt signal bridges
 
-- `voice/audio_stream.py` — `MicrophoneStream`: raw 16kHz mono audio
-  capture via `sounddevice`. Knows nothing about wake words.
-- `voice/wake_word.py` — `WakeWordDetector`: wraps OpenWakeWord's `Model`.
-  Takes audio frames, calls back on detection. Knows nothing about
-  microphones or Qt.
-- `voice/service.py` — `VoiceActivationService`: wires the above two
-  together and owns their lifecycle (`start()`/`stop()`). This is the only
-  piece `main.py` talks to.
+Audio callbacks, transcription, LLM generation, vision and TTS playback all run
+off the Qt main thread. Results come back through small `QObject` bridges in
+`app/`, each wrapping a `Signal`. Qt queues cross-thread emissions onto the
+receiving thread, which is the standard safe way to get data from a worker to
+the GUI.
 
-### Wake word detections cross threads via a Qt signal
+| Bridge | Carries |
+| --- | --- |
+| `wake_word_bridge.py` | Wake word detections |
+| `transcript_bridge.py` | Finished transcriptions |
+| `llm_bridge.py` | LLM responses and failures |
+| `tts_bridge.py` | Speech finished / failed |
+| `vision_locate_bridge.py` | A located target box (screen coordinates) |
 
-`sounddevice`'s audio callback runs on a background thread. `main.py`
-bridges detections onto Qt's main thread via `app/wake_word_bridge.py`'s
-`WakeWordBridge`, a `QObject` with a `Signal`. Qt automatically queues
-cross-thread signal emissions for delivery on the receiving object's
-thread, which is the standard, safe way to get data from a worker thread
-to the GUI thread. See `docs/DECISIONS.md` for why this matters even though
-`NullAuraRenderer` doesn't touch Qt/GPU resources yet.
+### One generation at a time
 
-### Speech module structure (Milestone 3)
+llama.cpp contexts aren't thread-safe. Submitting a second vision query while
+the first was still running crashed the whole process on real hardware, so
+`main.py` keeps a `current_turn["active"]` flag and refuses a new wake word or
+typed submission while a previous turn's generation is in flight. The guard is
+scoped to generation only, not to TTS playback, so interrupting speech with a
+new question still works. See `docs/DECISIONS.md` (2026-07-23).
 
-`speech/` mirrors `voice/`'s independently-testable-layers pattern:
+## Modules
 
-- `speech/listening_session.py` — `ListeningSession`: buffers audio frames
-  for one utterance, uses RMS-based silence detection to know when the
-  user stopped talking. Knows nothing about transcription or wake words.
-- `speech/transcriber.py` — `Transcriber`: wraps Faster-Whisper. Takes
-  buffered audio, returns text. Knows nothing about microphones or timing.
+### Voice (Milestone 2)
 
-`voice/service.py`'s `VoiceActivationService` now orchestrates the full
-pipeline: it owns the single `MicrophoneStream` and routes each frame to
-either the wake word detector (normal listening) or the active
-`ListeningSession` (capturing an utterance), based on internal mode state.
-When a session finishes, the captured audio is handed to a background
-thread for transcription — never the audio callback thread — and the
-result reaches Qt's main thread via `app/transcript_bridge.py`, the same
-signal-bridge pattern as wake word detections.
+Three independently testable layers:
 
-### LLM module structure (Milestone 4)
+- `voice/audio_stream.py`: `MicrophoneStream`, raw 16 kHz mono capture. Knows
+  nothing about wake words.
+- `voice/wake_word.py`: `WakeWordDetector`, wraps OpenWakeWord's `Model`. Takes
+  frames, calls back on detection. Knows nothing about microphones or Qt.
+- `voice/service.py`: `VoiceActivationService`, wires the two together and owns
+  their lifecycle. It is the only piece `main.py` talks to.
 
-`llm/` follows the same single-responsibility pattern as `voice/`/`speech/`:
+### Speech (Milestone 3)
 
-- `llm/engine.py` — `LLMEngine`: wraps a llama.cpp `Llama` instance
-  (via `llama-cpp-python`) for single-turn prompt/response. Knows nothing
-  about transcripts, Aura, or threading — takes text in, returns text out.
+- `speech/listening_session.py`: `ListeningSession` buffers audio for one
+  utterance and uses RMS-based silence detection to decide when you've stopped.
+- `speech/transcriber.py`: `Transcriber` wraps Faster-Whisper.
 
-`main.py` hands each transcript to `LLMEngine.generate()` on a
-dedicated worker thread (never the audio callback or Qt main thread — see
-`docs/DECISIONS.md`), with the result delivered back to the main thread
-via `app/llm_bridge.py`'s `LLMResponseBridge`, the same
-signal-bridge pattern used for wake word detections and transcripts.
-There is no conversation memory yet (Milestone 9) — each call is
-independent, seeded only with a system prompt.
+`VoiceActivationService` owns the single `MicrophoneStream` and routes each
+frame to the wake word detector or the active `ListeningSession` depending on
+its mode. When a session finishes, transcription runs on a background thread
+(never the audio callback thread).
 
-### Vision module structure (Milestone 5)
+### LLM (Milestone 4, extended in Milestone 9)
 
-`vision/` follows the same single-responsibility, independently-testable-
-layers pattern as `voice/`/`speech/`/`llm/`:
+`llm/engine.py`'s `LLMEngine` wraps a llama.cpp `Llama` instance. `generate()`
+takes the prompt text plus an optional `history` list of `(query, response)`
+pairs, inserted as alternating user and assistant chat messages between the
+system prompt and the current turn. The engine knows nothing about transcripts,
+Aura or threading.
 
-- `vision/capture.py` — `ScreenCapture`: wraps `mss` for a single
-  screenshot. Knows nothing about vision models, the LLM, or Aura. Never
-  writes to disk unless the caller opts into `capture_and_maybe_save()`.
-- `vision/model.py` — `VisionModel`: wraps two ONNX Runtime sessions
-  (a ViT encoder + a GPT-2 decoder) plus a `tokenizers` `Tokenizer`, for
-  single-image captioning (`describe(image) -> str`). Knows nothing about
-  screen capture, transcripts, or Aura — takes an image in, returns a
-  caption out. Weights are downloaded from Hugging Face Hub on first use
-  and cached, same pattern as `llm/engine.py` and `speech/transcriber.py`.
+The default model is Qwen2.5-3B-Instruct (q4_k_m, a single ~1.9 GB file). The
+system prompt asks for short spoken-style answers with no markdown, since
+replies are read aloud.
 
-Unlike `llm/engine.py`, screen-context awareness is **also** gated behind
-`settings.vision.enabled` (default `false`) in `main.py`, independent of
-whether the `vision` extra is installed — see `docs/DECISIONS.md`. When
-enabled, `main.py`'s LLM worker thread captures a screenshot, captions it,
-and prepends the caption to the prompt text before calling
-`LLMEngine.generate()` — `llm/engine.py` itself is untouched.
+### Vision (Milestone 5, extended in Milestone 7)
 
-### Aura rendering (Milestone 6)
+- `vision/capture.py`: `ScreenCapture` wraps `mss` for one screenshot. Never
+  writes to disk unless the caller uses `capture_and_maybe_save()`.
+- `vision/model.py`: `VisionModel` wraps MiniCPM-V-2.6 through llama-cpp-python's
+  `MiniCPMv26ChatHandler`. Two entry points:
+  - `describe(image)` returns a text description of the screen.
+  - `locate(image, target)` returns a `VisionLocation` (found, label, and a box
+    as 0-100 percentages). Output is grammar-constrained to a JSON schema, so
+    it always parses; a not-found result and a parse failure are treated the same.
+- `vision/ocr.py`: `OCRReader` wraps Tesseract and returns verbatim on-screen
+  text, filtering out low-confidence words.
 
-`aura/renderer/glow_renderer.py`'s `GlowAuraRenderer` is the real
-`AuraRenderer` implementation, replacing `NullAuraRenderer` as `main.py`'s
-default. It owns a frameless, translucent, always-on-top, click-through
-`QWidget` (`_AuraOverlayWidget`) sized to the primary screen, and paints a
-soft ambient glow inward from each edge using `QPainter` gradients —
-brightest at the screen edges/corners, fading to fully transparent by
-`GLOW_DEPTH` pixels in. `set_state()` doesn't repaint with a hard color
-swap; it drives a `QVariantAnimation` that cross-fades the current color
-to the new state's color over 350ms, then holds still — no continuous
-pulsing, per `docs/ROADMAP.md`'s design constraints. `main.py` falls back
-to `NullAuraRenderer` if constructing/initializing the glow renderer fails
-for any reason, same graceful-degradation shape as the LLM/vision
-pipelines.
+Capture is gated behind `settings.vision.enabled` (default `false`) in addition
+to the extra being installed, so nothing ever looks at the screen unless you
+opt in. When enabled, `main.py` also checks the query against
+`vision.trigger_keywords` (describe) and `vision.locate_trigger_keywords`
+(locate) so vision only runs when the question needs it. Captures are
+downscaled to `vision.max_image_dimension` before the model sees them, which
+cut screen-aware latency by roughly 90% on real hardware.
 
-### Data flow (current, as of Milestone 6)
+Weights come from Hugging Face Hub on first use and are cached.
+
+### Text to speech (Milestone 8)
+
+`tts/engine.py`'s `TTSEngine` wraps Piper. It resolves a voice (a local path, or
+download and cache under the models directory), synthesizes WAV audio, and plays
+it through `sounddevice`. `speak()` blocks until playback ends and `stop()`
+interrupts it, so `main.py` runs it on a worker thread and reports back through
+`tts_bridge.py`. With `tts.interrupt_on_new_query` on, a new query stops speech
+that's still playing.
+
+### Memory (Milestone 9)
+
+`memory/store.py`'s `ConversationStore` is a small SQLite wrapper (standard
+library `sqlite3`, so no extra): `save_turn()`, `get_recent_turns()` and
+`count_turns()`. `main.py` saves each turn right after a successful LLM response,
+and before each generation fetches the last `memory.context_turns` turns, puts
+them in chronological order, and passes them to `LLMEngine.generate()` as
+`history`. There is no token-budget accounting against `llm.n_ctx` yet, which is
+fine at 5 short turns.
+
+### Aura rendering (Milestone 6, extended in Milestone 7)
+
+`aura/renderer/glow_renderer.py`'s `GlowAuraRenderer` owns a frameless,
+translucent, always-on-top, click-through `QWidget` sized to the primary screen.
+It paints a soft glow inward from each screen edge with `QPainter` gradients,
+brightest at the edges and fading to transparent. `set_state()` cross-fades the
+color over 350 ms and then holds still, with no continuous pulsing.
+
+For visual guidance, `show_target_box(x, y, w, h)` flashes a plain rectangle
+outline via `_TargetBoxWidget`, a separate small overlay that's independent of
+the ambient glow. The renderer clamps coordinates to the screen and enforces a
+minimum size, because they come from a model and aren't trusted. The box hides
+itself after `TARGET_BOX_DURATION_MS`, when the next query arrives, or after
+about four seconds of the cursor resting inside it.
+
+States and colors live in `aura/states.py`: IDLE (blue), LISTENING (green),
+THINKING (purple), SPEAKING (cyan), ERROR (red), and WAITING_FOR_CONFIRMATION
+(yellow, defined but not yet used).
+
+### Dynamic Island (Milestone 10, in progress)
+
+`app/dynamic_island.py`'s `DynamicIslandWidget` is a frameless, translucent,
+always-on-top pill anchored at the bottom center of the primary screen, with
+collapsed and expanded states and an animated transition. It's a standalone
+module rather than another `AuraRenderer`, since it's interactive UI and not a
+status indicator. When `debug.enabled` is on, the expanded panel has a text input
+that emits `text_submitted`, wired to the same handler as the window's debug box.
+
+`app/hotkey.py`'s `GlobalHotkeyFilter` registers a system-wide hotkey through
+the Win32 `RegisterHotKey` API (via `ctypes`, no new dependency) and emits
+`activated` on `WM_HOTKEY`. `parse_hotkey()` turns a string like
+`"ctrl+shift+space"` into modifier flags and a virtual-key code. On non-Windows
+platforms, or if registration fails, it logs and does nothing.
+
+`main.py` connects the hotkey to `island.toggle()`, the wake word to
+`island.expand()`, and collapses the island at every point where a turn ends.
+
+Still open: a real settings surface inside the island (Part C) and retiring
+`app/main_window.py` (Part D).
+
+### Latency timing (Milestone 11, Part A)
+
+`utils/timing.py`'s `TurnTimer` times each stage of a turn (stt, vision, llm,
+tts) and logs a one-line summary when the turn reaches a terminal state. A
+`current_turn` holder in `main.py` carries the timer through the bridge and
+worker structure, and guards against a new wake word interrupting a previous
+turn's still-playing speech and corrupting the new turn's timing.
+
+## Data flow (current)
 
 ```
-Wake word detected (voice/wake_word.py)
+Wake word detected                       voice/wake_word.py
+        │   Aura → LISTENING, island expands
+        ▼
+Audio buffered until silence             speech/listening_session.py
         │
         ▼
-Aura → LISTENING (via app/wake_word_bridge.py)
+Transcribed on a background thread       speech/transcriber.py
+        │   Aura → THINKING
+        ▼
+[vision.enabled + trigger words]
+Screenshot → scene description + OCR     vision/capture.py, model.py, ocr.py
+        │
+[locate trigger words]
+Vision model locates the target          vision/model.py: locate()
+        │   Aura flashes a target box
+        ▼
+Last N turns fetched from SQLite         memory/store.py
         │
         ▼
-Audio buffered until silence (speech/listening_session.py)
+LLM generates on a background thread     llm/engine.py
         │
         ▼
-Transcribed on a background thread (speech/transcriber.py)
+Turn saved; response shown in the window memory/store.py, app/llm_bridge.py
         │
         ▼
-Aura → THINKING (via app/transcript_bridge.py)
-        │
+Piper speaks the response                tts/engine.py
+        │   Aura → SPEAKING
         ▼
-[If vision.enabled] Screenshot captured + captioned on the same
-background thread (vision/capture.py, vision/model.py), folded into
-the prompt text
-        │
-        ▼
-LLM generates a response on a background thread (llm/engine.py)
-        │
-        ▼
-Response shown in the placeholder window (via app/llm_bridge.py)
-        │
-        ▼
-Aura → IDLE
+Aura → IDLE, island collapses
 ```
 
-Once Milestones 7-8 land, this extends to: optional visual guidance
-(Milestone 7, arrows/highlights drawn by the same overlay widget) → voice
-response (Milestone 8) → back to IDLE. Update this diagram as each stage
-is implemented.
+A new wake word during speech stops playback and starts a new turn. A new
+query during generation is refused (see "One generation at a time").
 
+## Planned
+
+- Streaming TTS: speak the first sentence while the LLM is still generating.
+- Barge-in that also cancels in-flight generation. This needs a cancellation
+  hook in `llm/engine.py`.
+- Aura synced to Piper's actual playback amplitude.
+- Settings inside the island, then retiring the placeholder window.
+- A custom wake word model.
