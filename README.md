@@ -444,6 +444,19 @@ heavy models, so they run without GPUs or weights. The Qt-related parts have
 mostly been verified with an offscreen Qt platform (`QT_QPA_PLATFORM=offscreen`)
 plus real-hardware runs rather than committed UI tests.
 
+### Measuring pointing accuracy
+
+`python eval_locate.py` checks whether `locate()` really finds what you ask
+for. It draws scenes with known box positions (colored shapes, labeled
+buttons), asks the real model to find each one, and scores the answers by
+overlap (IoU) under three readings of the returned numbers: percent of the
+image (what the app assumes), raw pixels, and pixels in the model's internal
+resize (pass `--model-size WxH`, taken from llama.cpp's verbose log). It
+also prints a no-skill baseline and a check for whether the model gives
+different boxes for different questions. It needs the model installed, so
+run it on the machine that has the weights. The scoring itself is covered by
+`tests/test_locate_eval.py`, which uses a fake model.
+
 The project is built in small, confirmed parts, and every session ends with an
 updated `HANDOFF.md`. Before changing something, read
 [`docs/DECISIONS.md`](docs/DECISIONS.md) so you know why it works the way it

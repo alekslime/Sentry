@@ -40,3 +40,7 @@ Thumbs.db
 debug_full.png
 debug_shrunk_*.png
 locate_samples.jsonl
+
+# Output of eval_locate.py
+locate_eval.jsonl
+eval_out/
