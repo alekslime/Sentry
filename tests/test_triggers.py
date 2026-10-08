@@ -28,10 +28,29 @@ class FakeClassifier:
 # --- keyword_match / decide_screen_context ---------------------------------
 
 
-def test_keyword_match_is_case_insensitive_substring() -> None:
+def test_keyword_match_is_case_insensitive() -> None:
     assert keyword_match("Look at THIS", KEYWORDS)
     assert not keyword_match("what is the capital of France", KEYWORDS)
     assert not keyword_match("anything", [])
+
+
+def test_keyword_match_works_at_the_start_of_a_word() -> None:
+    assert keyword_match("I am looking at it", ["look"])
+    assert keyword_match("take a screenshot", ["screen"])
+    assert keyword_match("can you show me the button", ["show me"])
+
+
+def test_keyword_does_not_match_inside_other_words() -> None:
+    # "where" and "there" contain "here" but should not trigger vision.
+    assert not keyword_match("where is the Eiffel Tower", KEYWORDS)
+    assert not keyword_match("is there a faster way", KEYWORDS)
+    assert not keyword_match("a relocated file", ["locate"])
+    # a real hit still works
+    assert keyword_match("what is here", KEYWORDS)
+
+
+def test_blank_keywords_are_ignored() -> None:
+    assert not keyword_match("anything at all", ["", "  "])
 
 
 def test_empty_keywords_means_always_on_and_skips_classifier() -> None:

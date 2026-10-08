@@ -16,6 +16,7 @@ Order of checks:
 
 from __future__ import annotations
 
+import re
 from typing import Callable, NamedTuple, Sequence
 
 
@@ -25,9 +26,19 @@ class TriggerDecision(NamedTuple):
 
 
 def keyword_match(text: str, keywords: Sequence[str]) -> bool:
-    """Case-insensitive substring match, same rule the app always used."""
-    lowered = text.lower()
-    return any(kw.lower() in lowered for kw in keywords)
+    """Case-insensitive match of a keyword at the start of a word.
+
+    "look" matches "looking" and "show me" matches "can you show me", but
+    "here" no longer matches inside "where" or "there", which used to send
+    every "where is ..." question to the vision model. Blank keywords are
+    ignored. A keyword in the middle of a word ("see" in "seem") can still
+    match; the classifier cannot undo a keyword hit.
+    """
+    for keyword in keywords:
+        keyword = keyword.strip()
+        if keyword and re.search(r"\b" + re.escape(keyword), text, re.IGNORECASE):
+            return True
+    return False
 
 
 def decide_screen_context(

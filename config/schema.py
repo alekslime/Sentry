@@ -358,7 +358,7 @@ class VisionSettings(BaseModel):
         description=(
             "When vision.enabled is true, screen capture + captioning only "
             "run if the transcribed/debug query contains at least one of "
-            "these keywords (case-insensitive substring match). Keeps "
+            "these keywords (case-insensitive, matched at the start of a word, so \"here\" does not match \"where\"). Keeps "
             "vision's real per-query latency (MiniCPM-V is CPU-only) from "
             "being paid on queries that don't need screen context. Set to "
             "an empty list to run vision on every query (old behavior)."
@@ -397,7 +397,7 @@ class VisionSettings(BaseModel):
             "When vision.enabled is true, vision.enable_locate is true, and "
             "a vision model is loaded, VisionModel.locate() only runs if "
             "the transcribed/debug query contains at least one of these "
-            "keywords (case-insensitive substring match) -- keeps the "
+            "keywords (case-insensitive, matched at the start of a word) -- keeps the "
             "locate() call (and its found=False retry-prompt abort path) "
             "from firing on queries that were never asking to be shown/ "
             "pointed at something. Set to an empty list to attempt "

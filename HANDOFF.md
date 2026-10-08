@@ -31,7 +31,7 @@ The README has the short version. This file is the detail.
 | 10 Dynamic Island | Widget, global hotkey (`ctrl+shift+space`) and wake-word activation done. Part C (settings in the island) and Part D (retire `app/main_window.py`) open | README reports activation working. Island rendering verified offscreen only; see below |
 | 11 Realtime responsiveness | Part A (latency timing) done. B streaming TTS, C barge-in, D audio-synced Aura open | Vision went from 234s to about 4s per query (downscale to 512px, repeat penalty) |
 
-Test suite: 133 tests, all passing in a sandbox with PySide6 (offscreen),
+Test suite: 136 tests, all passing in a sandbox with PySide6 (offscreen),
 Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
 
 ## Recent changes (this session)
@@ -64,9 +64,10 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
   have never been tuned or run on a real display.
 
 **Vision triggers**
-- Keyword matching is still substring-based, so "where" matches "here" and
-  "seem" matches "see". The new LLM fallback only helps queries that matched no
-  keyword; it cannot undo a false keyword hit.
+- Keywords now match at the start of a word ("here" no longer matches inside
+  "where"), but a keyword in the middle of a word can still hit ("see" in
+  "seem"). The LLM fallback only helps queries that matched no keyword; it
+  cannot undo a false keyword hit.
 - The new fallback (`vision.intent_classifier`, default on) has **not been run
   against the real LLM.** Run `python eval_screen_intent.py` where the model is
   installed. If answers are poor, set it to false or use a larger model.

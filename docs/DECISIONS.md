@@ -1586,3 +1586,11 @@ it on the machine with the LLM and edit the questions to match how you talk.
 If the small default LLM answers badly, set `vision.intent_classifier: false`
 or use a larger model.
 
+**Follow-up, same day: keywords match at the start of a word.** The old
+substring rule made "here" match inside "where" and "there", so every "where
+is ..." question paid for a vision pass; this is the same effect the Session 5
+perf finding in `docs/TODO.md` ran into. `keyword_match()` now requires the
+keyword to begin at a word boundary. "looking" and "screenshot" still hit
+"look" and "screen". "see" can still hit inside "seem"; the LLM fallback runs
+only after a miss, so it cannot correct that one. Blank keywords are ignored.
+
