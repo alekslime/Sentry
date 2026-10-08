@@ -365,7 +365,7 @@ class VisionSettings(BaseModel):
         ),
     )
     intent_classifier: bool = Field(
-        default=True,
+        default=False,
         description=(
             "When a query matches none of trigger_keywords, ask the local LLM "
             "one yes/no question (\"does this need the screen?\") before giving "
@@ -373,7 +373,9 @@ class VisionSettings(BaseModel):
             "my timeline?\" that never say \"this\" or \"here\". Costs one tiny "
             "extra LLM call on queries that matched no keyword, nothing on "
             "keyword matches. Any failure counts as \"no\". Set to false for "
-            "keyword-only gating (the old behavior). Ignored when "
+            "keyword-only gating (the old behavior). Off by default: with "
+            "the default 0.5B model it answered yes to almost everything "
+            "(see docs/DECISIONS.md, 2026-10-08). Ignored when "
             "trigger_keywords is empty (vision already runs on every query)."
         ),
     )

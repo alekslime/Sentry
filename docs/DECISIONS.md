@@ -1594,3 +1594,24 @@ keyword to begin at a word boundary. "looking" and "screenshot" still hit
 "look" and "screen". "see" can still hit inside "seem"; the LLM fallback runs
 only after a miss, so it cannot correct that one. Blank keywords are ignored.
 
+**Result, same day: the fallback is off by default.** `eval_screen_intent.py`
+on the default Qwen2.5-0.5B (Q4_K_M), 26 labeled questions, 21 fallback calls
+at about 0.14s each: keywords only got 17/26 right; keywords plus the LLM got
+12/26. The model answered "yes" to every general-knowledge question ("What's
+the capital of France?", "Tell me a joke", and so on), so the fallback added 13
+false alarms to fix 8 misses and still left the rest. Each false alarm costs a
+full vision pass. `vision.intent_classifier` now defaults to false. The code,
+tests and eval script stay so a better model or prompt can be tried by flipping
+one setting.
+
+**Why not use token probabilities instead of the generated word.** That would
+let a threshold correct a model that is biased toward "yes". llama-cpp-python
+only returns logprobs for models created with `logits_all=True`, which keeps
+logits for every position (roughly n_ctx x vocabulary floats, over 1 GB for this
+vocabulary at n_ctx 2048). Not worth that for the main generation model.
+
+**Next to try, in order:** a stricter prompt that defaults to "no" (the eval
+script compares variants), then a larger model such as a 3B (the script takes
+`--repo-id`/`--filename`). Promote a variant only if it beats keywords-only on
+the eval. Otherwise keep keywords only and widen the keyword list.
+

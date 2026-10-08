@@ -42,8 +42,9 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
   `%APPDATA%\Iris` folder to `%APPDATA%\Sentry` on first launch;
   `config/settings.py` updates the old name inside a migrated `config.yaml`.
 - Added `eval_locate.py` and `vision/locate_eval.py` to measure pointing accuracy.
-- Vision triggers: keywords first, then an LLM yes/no fallback for queries that
-  matched none (`vision/triggers.py`, `llm/screen_intent.py`).
+- Vision triggers: keywords first, then an optional LLM yes/no fallback for
+  queries that matched none (`vision/triggers.py`, `llm/screen_intent.py`).
+  Measured on the default model and turned off; see Known issues.
 
 ## Known issues / not yet verified
 
@@ -68,9 +69,10 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
   "where"), but a keyword in the middle of a word can still hit ("see" in
   "seem"). The LLM fallback only helps queries that matched no keyword; it
   cannot undo a false keyword hit.
-- The new fallback (`vision.intent_classifier`, default on) has **not been run
-  against the real LLM.** Run `python eval_screen_intent.py` where the model is
-  installed. If answers are poor, set it to false or use a larger model.
+- The LLM fallback (`vision.intent_classifier`) is **off by default.** On the
+  default 0.5B model it scored 12/26 against 17/26 for keywords alone, because
+  the model says yes to almost everything. Try a stricter prompt or a bigger
+  model with `python eval_screen_intent.py`; details in `docs/DECISIONS.md`.
 
 **Rename and migration**
 - The `%APPDATA%\Iris` to `%APPDATA%\Sentry` move and the config name update
@@ -96,9 +98,10 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
 
 ## Next up
 
-1. **Check the vision-trigger fallback on real hardware.** Run
-   `python eval_screen_intent.py`, then try a few real questions with the
-   debug box and watch the log line saying why vision did or did not run.
+1. **Improve the vision-trigger fallback or drop it.** Run
+   `python eval_screen_intent.py` (it compares prompt variants; add
+   `--repo-id`/`--filename` to try a larger LLM). Turn the setting on only if a
+   variant beats keywords alone.
 2. **Real-hardware pass:** confirm the Windows data-folder migration, then run
    `eval_locate.py` and decide what to do about pointing (different grounding
    model, OCR boxes for text targets, or fix the coordinate conversion).
