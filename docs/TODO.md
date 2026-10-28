@@ -342,8 +342,9 @@ parts breakdown.
 
 ## Loose ends / small items
 
-- [ ] **Vision config defaults are stale again (found 2026-07-16, not yet
-      fixed).** The 2026-07-13 fix below ("stale `vision:` section") was
+- [x] **Vision config defaults are stale again (found 2026-07-16; fixed:
+      repo/filename defaults synced 2026-07-17, `enable_locate: false` added
+      to `default_config.yaml` 2026-10-28).** The 2026-07-13 fix below ("stale `vision:` section") was
       supposed to replace the leftover ONNX/moondream2 fields with the
       current MiniCPM-V-2.6 GGUF ones, but `VisionSettings` in
       `config/schema.py` *and* `config/default_config.yaml` still default

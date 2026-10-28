@@ -91,9 +91,7 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
   default 5 short turns; revisit if turns get long.
 - `aura/` has no committed pytest coverage; it was verified with offscreen scripts.
 - The wake word is still the placeholder `hey_jarvis`.
-- **Doc drift:** `docs/ROADMAP.md` still shows Milestone 10 Part B unchecked, and
-  `docs/TODO.md` still lists "vision config defaults are stale" as open. The
-  defaults now match `vision/model.py`, so that item can be closed.
+- **Doc drift:** `docs/ROADMAP.md` still shows Milestone 10 Part B unchecked.
 
 ## Next up
 
