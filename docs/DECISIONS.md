@@ -1646,3 +1646,31 @@ decision (truncate OCR to a token cap, or summarise it) and is not made here.
 **Not verified on real hardware.** Tested with a fake tokenizer that counts
 words. Real BPE counts and the exact chat-template overhead of the default
 Qwen2.5-0.5B model have not been measured, which is why the margin is there.
+
+## 2026-10-28 — Trigger keywords match whole words, not word prefixes
+
+**Problem.** `keyword_match()` used `\b` + keyword, which matches any word that
+*starts* with a keyword. With the default `[screen, see, look, this, here]`,
+"how do I seed a lawn", "I can't seem to focus today" and "tell me about
+thistles" all counted as screen questions and paid for a capture, caption and
+OCR pass. The 2026-10-08 fix for "here" inside "where" only solved the
+middle-of-word case. `eval_screen_intent.py` already labels the "seem" question
+as not needing the screen, so this was always the intended behavior. Measured on
+that set: keywords-only 17/26 before, 18/26 after, nothing else changed.
+
+**Decision.** Match a whole word, optionally followed by one of `s, es, ed, ing,
+shot, shots`, plus `d` when the keyword ends in `e` but not `ee`. That keeps
+"looking", "screenshot" and "located" working and rejects "seed" (see + d,
+which is why `ee` is excluded), "seem", "thistle" and "hereby".
+
+**Known gaps.** Irregular forms ("seen", "saw") are not recognized; add them to
+the config list. "screening" still matches `screen`. This change also applies to
+`vision.locate_trigger_keywords`, which uses the same function.
+
+**Alternatives considered.** Strict whole word with no endings: simplest, but it
+would silently stop matching "looking" and "screenshot" for anyone with the
+default list. A stop-list of false-positive words: never finishes.
+
+**Behavior change.** Anyone relying on prefix matching with a custom keyword
+list (for example `screen` to catch `screencast`) must now list the words they
+want.

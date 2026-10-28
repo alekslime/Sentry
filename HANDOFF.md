@@ -72,10 +72,16 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
   have never been tuned or run on a real display.
 
 **Vision triggers**
-- Keywords now match at the start of a word ("here" no longer matches inside
-  "where"), but a keyword in the middle of a word can still hit ("see" in
-  "seem"). The LLM fallback only helps queries that matched no keyword; it
-  cannot undo a false keyword hit.
+- Keywords match whole words plus common endings (s, es, ed, ing, shot(s),
+  and d after a final e other than ee), so "seed", "seem", "thistle" and
+  "where" no longer hit. Irregular forms ("seen", "saw") and a few real words
+  that equal keyword + ending ("screening" for `screen`) are not handled; list
+  extra forms in `vision.trigger_keywords`. The LLM fallback only helps queries
+  that matched no keyword; it cannot undo a false keyword hit.
+- Keywords-only on the 26 hand-labeled questions in `eval_screen_intent.py`:
+  17/26 before this change, 18/26 after (the "seem" question). The other 8
+  misses are queries that never say a keyword ("what's wrong with my
+  timeline"); widening the keyword list is the open work there.
 - The LLM fallback (`vision.intent_classifier`) is **off by default.** On the
   default 0.5B model it scored 12/26 against 17/26 for keywords alone, because
   the model says yes to almost everything. Try a stricter prompt or a bigger
