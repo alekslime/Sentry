@@ -14,7 +14,7 @@ The colored glow around the screen edge is **Aura**. It changes color to show
 what Sentry is doing: listening, thinking, speaking, or hit a problem.
 
 > **A note on the name.** This project used to be called Iris. If you ran an
-> older version, your data folder is moved from `%APPDATA%\Sentry` to
+> older version, your data folder is moved from `%APPDATA%\Iris` to
 > `%APPDATA%\Sentry` on first launch, and the console command is now `sentry`
 > (run `pip install -e .` again to get it). Your existing `config.yaml` comes
 > along, and the old name in it (`app_name: Iris` and "You are Iris," in the
