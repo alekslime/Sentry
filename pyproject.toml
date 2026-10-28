@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
 authors = [
-    { name = "Iris Project" }
+    { name = "Sentry Project" }
 ]
 
 dependencies = [

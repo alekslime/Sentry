@@ -79,7 +79,6 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
   are covered by tests against temp folders but have **not run on a real
   Windows machine**. The `sentry` console command needs `pip install -e .`
   again. A stale `iris.egg-info/` may still be sitting in old checkouts.
-- `LICENSE` and the `pyproject.toml` author field still say "Iris Project".
 
 **Dynamic Island**
 - Verified offscreen only. Not confirmed: real transparency over desktop content,
