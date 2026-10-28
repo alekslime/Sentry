@@ -1615,3 +1615,34 @@ script compares variants), then a larger model such as a 3B (the script takes
 `--repo-id`/`--filename`). Promote a variant only if it beats keywords-only on
 the eval. Otherwise keep keywords only and widen the keyword list.
 
+
+## 2026-10-28 — Conversation history is trimmed to fit `n_ctx` inside `LLMEngine`
+
+The 2026-07 "No token-budget accounting" decision (Milestone 9, Part B) left
+`memory.context_turns` as a raw turn count and flagged what would happen with
+long turns as untested. The prompt that matters is not just history: with
+vision on, `user_text` also carries a screen caption and full-resolution OCR
+text, so the largest part of the prompt is exactly the part history cannot
+control. A request over `n_ctx` is rejected by llama.cpp and surfaces in the
+window as "(LLM error - see logs: ...)".
+
+**Where it lives.** `LLMEngine.generate()` calls `_fit_history()`, not
+`main.py`, because the engine owns `n_ctx` and the tokenizer. `main.py` still
+only fetches `context_turns` turns. This keeps `main.py`'s "no feature logic"
+rule intact.
+
+**Policy.** Whole (query, response) pairs are dropped oldest-first; the
+newest contiguous run that fits is kept. Budget is
+`n_ctx - max_tokens - 64` (safety margin) minus the system prompt, this turn's
+text, and 8 tokens per message for chat-template markers. Counts come from the
+model's own tokenizer; if that raises, a pessimistic `len(text) // 3 + 1`
+estimate is used so failure can only trim more, never less.
+
+**What it does not do.** If the system prompt plus this turn's text alone
+exceed the budget, history is dropped entirely and the request still goes to
+llama.cpp, which will reject it. Shrinking a huge OCR dump is a separate
+decision (truncate OCR to a token cap, or summarise it) and is not made here.
+
+**Not verified on real hardware.** Tested with a fake tokenizer that counts
+words. Real BPE counts and the exact chat-template overhead of the default
+Qwen2.5-0.5B model have not been measured, which is why the margin is there.

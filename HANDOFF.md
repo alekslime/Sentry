@@ -42,6 +42,13 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
   `%APPDATA%\Iris` folder to `%APPDATA%\Sentry` on first launch;
   `config/settings.py` updates the old name inside a migrated `config.yaml`.
 - Added `eval_locate.py` and `vision/locate_eval.py` to measure pointing accuracy.
+- Fixed the README data-folder path, renamed the license/author to "Sentry
+  Project", added `enable_locate: false` to `default_config.yaml`, and closed
+  the doc-drift items that were listed here.
+- `LLMEngine.generate()` now trims the oldest conversation turns so the prompt
+  fits `n_ctx` (`_fit_history`). 5 new tests in `tests/test_llm_engine.py`.
+  Verified only in a stand-in test runner (no pytest/pydantic/PySide6 in that
+  sandbox): the real tokenizer and a real over-long prompt have not been run.
 - Vision triggers: keywords first, then an optional LLM yes/no fallback for
   queries that matched none (`vision/triggers.py`, `llm/screen_intent.py`).
   Measured on the default model and turned off; see Known issues.
@@ -87,8 +94,6 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
 - The global hotkey uses Win32 `RegisterHotKey`, so it is Windows-only.
 
 **Other**
-- `memory.context_turns` has no token budget against `llm.n_ctx`. Fine at the
-  default 5 short turns; revisit if turns get long.
 - `aura/` has no committed pytest coverage; it was verified with offscreen scripts.
 - The wake word is still the placeholder `hey_jarvis`.
 

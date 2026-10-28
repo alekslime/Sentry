@@ -673,9 +673,9 @@ def main() -> int:
             # this turn's prompt needs the fresh screen context. Reversed
             # to oldest-first, since ConversationStore.get_recent_turns
             # returns newest-first but chat messages need chronological
-            # order. No token-budget accounting against llm.n_ctx here —
-            # see MemorySettings.context_turns' docstring and
-            # docs/DECISIONS.md.
+            # order. No token counting here: LLMEngine.generate() drops the
+            # oldest turns itself if they don't fit llm.n_ctx (see
+            # LLMEngine._fit_history and docs/DECISIONS.md, 2026-10-28).
             history: list[tuple[str, str]] = []
             if conversation_store is not None and settings.memory.context_turns > 0:
                 try:

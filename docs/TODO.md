@@ -461,9 +461,9 @@ parts breakdown.
       the zip hadn't actually overwritten the old files in the folder
       they launched from. The symptom looked exactly like a real bug
       (follow-up questions got "I don't have access to that
-      information") until checked directly. No token-budget accounting
-      against `llm.n_ctx` yet for `memory.context_turns` — see
-      `docs/DECISIONS.md`. See `HANDOFF.md`'s Session 9 entry for the
+      information") until checked directly. (Token-budget trimming
+      for `memory.context_turns` was added 2026-10-28; see
+      `docs/DECISIONS.md`.) See `HANDOFF.md`'s Session 9 entry for the
       full account.
 - [x] **Milestone 8: local voice output (Piper) — confirmed on real
       hardware (2026-07-16, Session 8).** LLM responses are now spoken
