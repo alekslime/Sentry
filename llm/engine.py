@@ -76,6 +76,14 @@ DEFAULT_SYSTEM_PROMPT = (
 DOWNLOAD_RETRY_ATTEMPTS = 3
 DOWNLOAD_RETRY_BACKOFF_S = 2.0
 
+# History budgeting (see `_fit_history`). Chat templates add a few tokens of
+# role markers per message, and the tokenizer count is of raw text only, so
+# each message gets a small flat allowance on top of that. The safety margin
+# covers template tokens at the very start/end of the prompt and any drift
+# between this count and what llama.cpp actually evaluates.
+MESSAGE_OVERHEAD_TOKENS = 8
+CONTEXT_SAFETY_MARGIN_TOKENS = 64
+
 
 class LLMEngine:
     """Wraps a llama.cpp `Llama` instance for chat completion.
@@ -98,6 +106,7 @@ class LLMEngine:
         verbose: bool = False,
     ) -> None:
         self._system_prompt = system_prompt
+        self._n_ctx = n_ctx
 
         try:
             if local_model_path:
@@ -166,6 +175,64 @@ class LLMEngine:
         assert last_exc is not None  # loop always runs >=1 time
         raise last_exc
 
+    def _count_tokens(self, text: str) -> int:
+        """Token count for `text`, from the model's own tokenizer when it has
+        one. Falls back to a deliberately pessimistic characters/3 estimate
+        (English averages nearer 4 chars/token) so a tokenizer failure can
+        only make history trimming more aggressive, never less.
+        """
+        try:
+            return len(self._model.tokenize(text.encode("utf-8"), add_bos=False))
+        except Exception:  # noqa: BLE001 - any tokenizer failure -> estimate
+            return len(text) // 3 + 1
+
+    def _fit_history(
+        self, history: list[tuple[str, str]], user_text: str, max_tokens: int
+    ) -> list[tuple[str, str]]:
+        """Drop the oldest turns until the prompt fits in `n_ctx`.
+
+        The prompt (system + history + this turn's text, which can carry a
+        screen caption and OCR output) plus `max_tokens` of reply has to fit
+        in the context window, or llama.cpp refuses the request outright.
+        History is the only part that can be shrunk here, so whole
+        (query, response) pairs are dropped oldest-first and the most recent
+        contiguous run that fits is kept. If even zero history doesn't fit,
+        the prompt itself is too large; that is left to llama.cpp to report.
+        """
+        if not history:
+            return history
+
+        budget = self._n_ctx - max_tokens - CONTEXT_SAFETY_MARGIN_TOKENS
+        used = (
+            self._count_tokens(self._system_prompt)
+            + self._count_tokens(user_text)
+            + 2 * MESSAGE_OVERHEAD_TOKENS
+        )
+        kept: list[tuple[str, str]] = []
+        for past_query, past_response in reversed(history):
+            cost = (
+                self._count_tokens(past_query)
+                + self._count_tokens(past_response)
+                + 2 * MESSAGE_OVERHEAD_TOKENS
+            )
+            if used + cost > budget:
+                break
+            used += cost
+            kept.append((past_query, past_response))
+        kept.reverse()
+
+        if len(kept) < len(history):
+            logger.info(
+                "Trimmed conversation history from %d to %d turns to fit n_ctx=%d "
+                "(~%d tokens used of a %d-token prompt budget).",
+                len(history),
+                len(kept),
+                self._n_ctx,
+                used,
+                budget,
+            )
+        return kept
+
     def generate(
         self,
         user_text: str,
@@ -193,8 +260,10 @@ class LLMEngine:
         if not user_text.strip():
             return ""
 
+        history = self._fit_history(history or [], user_text, max_tokens)
+
         messages: list[dict[str, str]] = [{"role": "system", "content": self._system_prompt}]
-        for past_query, past_response in history or []:
+        for past_query, past_response in history:
             messages.append({"role": "user", "content": past_query})
             messages.append({"role": "assistant", "content": past_response})
         messages.append({"role": "user", "content": user_text})
@@ -211,7 +280,7 @@ class LLMEngine:
             "LLM generated %d chars for input %r (%d history turns)",
             len(text),
             user_text,
-            len(history or []),
+            len(history),
         )
         return text
 

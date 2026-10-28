@@ -215,3 +215,91 @@ def test_classify_yes_no_sends_its_own_system_prompt_and_stays_cheap() -> None:
     ]
     assert kwargs["temperature"] == 0.0
     assert kwargs["max_tokens"] <= 8
+
+
+# --- History budgeting against n_ctx (`LLMEngine._fit_history`) -------------
+#
+# The fake model's tokenizer counts whitespace-separated words, so token
+# counts in these tests are exact and easy to reason about. Real BPE counts
+# differ, which is why the engine keeps a safety margin on top.
+
+
+def _build_budget_engine(monkeypatch, engine_module, n_ctx: int, system_prompt: str = "sys"):
+    with patch.object(engine_module, "Llama") as llama_ctor:
+        fake_model = MagicMock(name="fake-model")
+        fake_model.tokenize.side_effect = lambda data, add_bos=True: data.split()
+        fake_model.create_chat_completion.return_value = {
+            "choices": [{"message": {"content": "ok"}}]
+        }
+        llama_ctor.return_value = fake_model
+        llm = engine_module.LLMEngine(
+            local_model_path="/some/local/model.gguf", n_ctx=n_ctx, system_prompt=system_prompt
+        )
+    return llm, fake_model
+
+
+def _sent_history_queries(fake_model) -> list[str]:
+    messages = fake_model.create_chat_completion.call_args.kwargs["messages"]
+    return [m["content"] for m in messages[1:-1] if m["role"] == "user"]
+
+
+def test_history_that_fits_is_kept_whole(monkeypatch) -> None:
+    engine_module = _import_engine()
+    llm, fake_model = _build_budget_engine(monkeypatch, engine_module, n_ctx=4096)
+    history = [("one", "a"), ("two", "b"), ("three", "c")]
+
+    llm.generate("now", max_tokens=100, history=history)
+
+    assert _sent_history_queries(fake_model) == ["one", "two", "three"]
+
+
+def test_oldest_turns_are_dropped_first_when_history_exceeds_budget(monkeypatch) -> None:
+    engine_module = _import_engine()
+    # Each turn below costs 1 + 1 + 2*MESSAGE_OVERHEAD_TOKENS (=18) tokens.
+    # Fixed cost: system(1) + user_text(1) + 2*overhead(16) = 18.
+    # Budget = n_ctx - max_tokens - margin. Choose n_ctx so exactly two turns fit:
+    # 18 + 2*18 = 54 <= budget < 18 + 3*18 = 72.
+    n_ctx = 10 + engine_module.CONTEXT_SAFETY_MARGIN_TOKENS + 54
+    llm, fake_model = _build_budget_engine(monkeypatch, engine_module, n_ctx=n_ctx)
+    history = [("oldest", "a"), ("middle", "b"), ("newest", "c")]
+
+    llm.generate("now", max_tokens=10, history=history)
+
+    assert _sent_history_queries(fake_model) == ["middle", "newest"]
+
+
+def test_all_history_dropped_when_nothing_fits_but_generation_still_runs(monkeypatch) -> None:
+    engine_module = _import_engine()
+    llm, fake_model = _build_budget_engine(monkeypatch, engine_module, n_ctx=100)
+    history = [("q " * 500, "r " * 500)]
+
+    result = llm.generate("now", max_tokens=10, history=history)
+
+    assert result == "ok"
+    assert _sent_history_queries(fake_model) == []
+
+
+def test_long_user_text_shrinks_the_history_that_fits(monkeypatch) -> None:
+    engine_module = _import_engine()
+    n_ctx = 10 + engine_module.CONTEXT_SAFETY_MARGIN_TOKENS + 54
+    llm, fake_model = _build_budget_engine(monkeypatch, engine_module, n_ctx=n_ctx)
+    history = [("oldest", "a"), ("middle", "b"), ("newest", "c")]
+
+    # A longer user_text (stand-in for screen caption + OCR) raises the fixed
+    # cost from 18 to 20 tokens: 20 + 18 = 38 fits the 54-token budget, 20 + 36
+    # = 56 does not, so only the newest turn survives.
+    llm.generate("word " * 3, max_tokens=10, history=history)
+
+    assert _sent_history_queries(fake_model) == ["newest"]
+
+
+def test_tokenizer_failure_falls_back_to_a_pessimistic_estimate(monkeypatch) -> None:
+    engine_module = _import_engine()
+    llm, fake_model = _build_budget_engine(monkeypatch, engine_module, n_ctx=4096)
+    fake_model.tokenize.side_effect = RuntimeError("tokenizer unavailable")
+
+    # 300 chars -> 101 estimated tokens; 12 chars -> 5.
+    assert llm._count_tokens("x" * 300) == 101
+    assert llm._count_tokens("x" * 12) == 5
+    # And generate() must not raise just because the tokenizer did.
+    assert llm.generate("hello", history=[("q", "r")]) == "ok"
