@@ -17,6 +17,7 @@ Order of checks:
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from typing import Callable, NamedTuple, Sequence
 
 
@@ -25,18 +26,39 @@ class TriggerDecision(NamedTuple):
     reason: str  # short, for logs
 
 
-def keyword_match(text: str, keywords: Sequence[str]) -> bool:
-    """Case-insensitive match of a keyword at the start of a word.
+# Endings a keyword may carry and still count as that keyword: "look" ->
+# looks/looked/looking, "screen" -> screens/screenshot(s). Anything else
+# ("seed", "seem", "thistle", "hereby") is a different word.
+_INFLECTIONS = ("s", "es", "ed", "ing", "shot", "shots")
 
-    "look" matches "looking" and "show me" matches "can you show me", but
-    "here" no longer matches inside "where" or "there", which used to send
-    every "where is ..." question to the vision model. Blank keywords are
-    ignored. A keyword in the middle of a word ("see" in "seem") can still
-    match; the classifier cannot undo a keyword hit.
+
+@lru_cache(maxsize=256)
+def _keyword_pattern(keyword: str) -> re.Pattern[str]:
+    endings = list(_INFLECTIONS)
+    # "locate" -> "located". Not for words ending in "ee": "see" + "d" is
+    # "seed", which has nothing to do with seeing.
+    if keyword.endswith("e") and not keyword.endswith("ee"):
+        endings.append("d")
+    return re.compile(
+        r"\b" + re.escape(keyword) + r"(?:" + "|".join(endings) + r")?\b", re.IGNORECASE
+    )
+
+
+def keyword_match(text: str, keywords: Sequence[str]) -> bool:
+    """Case-insensitive whole-word match, allowing a few common endings.
+
+    "look" matches "look", "looks" and "looking"; "screen" matches
+    "screenshot"; "show me" matches "can you show me". Words that merely
+    start with a keyword do not match: "see" is not in "seed" or "seem",
+    "this" is not in "thistle", and "here" is not in "where", "there" or
+    "hereby". Irregular forms ("saw", "seen") are not recognized; add them
+    to the keyword list if you want them. Blank keywords are ignored. A
+    keyword hit cannot be undone by the classifier fallback, so false hits
+    here cost a full vision pass.
     """
     for keyword in keywords:
         keyword = keyword.strip()
-        if keyword and re.search(r"\b" + re.escape(keyword), text, re.IGNORECASE):
+        if keyword and _keyword_pattern(keyword).search(text):
             return True
     return False
 

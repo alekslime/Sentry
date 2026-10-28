@@ -34,10 +34,41 @@ def test_keyword_match_is_case_insensitive() -> None:
     assert not keyword_match("anything", [])
 
 
-def test_keyword_match_works_at_the_start_of_a_word() -> None:
+def test_keyword_match_allows_common_endings() -> None:
+    assert keyword_match("it looks off", ["look"])
     assert keyword_match("I am looking at it", ["look"])
+    assert keyword_match("she looked twice", ["look"])
+    assert keyword_match("what do you see", ["see"])
+    assert keyword_match("he sees it", ["see"])
+    assert keyword_match("seeing red", ["see"])
     assert keyword_match("take a screenshot", ["screen"])
+    assert keyword_match("two screenshots", ["screen"])
+    assert keyword_match("where is it located", ["locate"])
     assert keyword_match("can you show me the button", ["show me"])
+
+
+def test_keyword_does_not_match_words_that_only_start_with_it() -> None:
+    # Each of these used to trigger a full capture + caption + OCR pass.
+    assert not keyword_match("how do I seed a lawn", KEYWORDS)
+    assert not keyword_match("I can't seem to focus today", KEYWORDS)
+    assert not keyword_match("tell me about thistles", KEYWORDS)
+    assert not keyword_match("what does hereby mean", KEYWORDS)
+
+
+def test_see_plus_d_is_not_seed_but_locate_plus_d_is_located() -> None:
+    assert not keyword_match("seed", ["see"])
+    assert keyword_match("located", ["locate"])
+
+
+def test_irregular_forms_need_to_be_listed_explicitly() -> None:
+    assert not keyword_match("have you seen it", ["see"])
+    assert keyword_match("have you seen it", ["see", "seen"])
+
+
+def test_decide_screen_context_ignores_a_prefix_only_hit() -> None:
+    decision = decide_screen_context("how do I seed a lawn", KEYWORDS)
+    assert decision.use_screen is False
+    assert decision.reason == "no keyword match"
 
 
 def test_keyword_does_not_match_inside_other_words() -> None:
