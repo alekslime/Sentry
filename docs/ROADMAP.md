@@ -100,8 +100,9 @@ access now lives inside the island rather than as a separate screen.
       near-black/frosted-glass color, collapsed/expanded states,
       bottom-center positioning. Verified offscreen (real painted
       pixels). No activation wiring yet.
-- [ ] Part B — Activation triggers: global keyboard shortcut + existing
-      voice wake word, both expanding the island.
+- [x] Part B — Activation triggers: global keyboard shortcut + existing
+      voice wake word, both expanding the island. (Wired in `main.py`;
+      real-display behavior still unconfirmed, see HANDOFF.md.)
 - [ ] Part C — Settings icon/button inside the expanded island opens a
       real (if minimal) settings surface.
 - [ ] Part D — Retire `app/main_window.py`'s always-visible placeholder
