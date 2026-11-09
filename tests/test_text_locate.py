@@ -5,6 +5,13 @@ the real Tesseract binary (hardware accuracy is measured separately by
 /tmp/eval_text_locate.py against rendered scenes with known truth).
 """
 
+import pytest
+
+pytest.importorskip("pytesseract", reason="vision extra (pytesseract) not installed")
+pytest.importorskip("PIL", reason="vision extra (Pillow) not installed")
+
+# These imports follow the importorskip guards -- the vision extra is
+# optional and Sentry degrades without it.
 from vision.ocr import WordBox
 from vision.text_locate import TextMatch, extract_target_words, locate_text
 

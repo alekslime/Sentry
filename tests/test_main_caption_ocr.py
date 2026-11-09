@@ -11,6 +11,12 @@ from __future__ import annotations
 import threading
 from unittest.mock import MagicMock
 
+import pytest
+
+pytest.importorskip("PIL", reason="vision extra (Pillow) not installed")
+
+# This import follows the importorskip guard -- the vision extra is
+# optional and Sentry degrades without it.
 from PIL import Image
 
 from main import _caption_and_ocr

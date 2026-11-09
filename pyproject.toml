@@ -21,7 +21,11 @@ dependencies = [
 [project.optional-dependencies]
 speech = [
     "faster-whisper>=1.0.0",
-    "openwakeword>=0.6.0",
+    # Windows-only: openwakeword requires tflite-runtime on Linux, which
+    # publishes no wheels for Python >= 3.10 (max cp39) while this project
+    # requires >= 3.12 -- uninstallable there. The app degrades without
+    # wake-word on Linux (optional import); see voice/wake_word.py.
+    "openwakeword>=0.6.0; sys_platform == 'win32'",
     "sounddevice>=0.4.6",
 ]
 llm = [
