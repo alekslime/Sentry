@@ -499,8 +499,11 @@ parts breakdown.
       reserved, no third-party use, modification, or redistribution);
       `pyproject.toml`'s `license` field updated from the old placeholder
       "MIT" to "Proprietary" to match.
-- [ ] Consider a `Makefile` or `justfile` for common dev commands
-      (`run`, `test`, `lint`, `format`) once there's enough to script
+- [x] ~~Consider a `Makefile` or `justfile` for common dev commands~~ --
+      done as `scripts/verify.py` instead (2026-11-09): a Makefile wouldn't
+      run on Windows, and a Python script runs everywhere. One command for
+      the whole gate (`test`, `lint`, `format`, `types` steps, runnable as
+      a subset), wired into `.github/workflows/ci.yml`.
 - [ ] `GlowAuraRenderer` has no visual guidance rendering yet (arrows,
       highlights, bounding boxes) — that's Milestone 7. It only shows
       the ambient state glow so far.

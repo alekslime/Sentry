@@ -436,8 +436,14 @@ Logs live in `%APPDATA%\Sentry\logs\`.
 
 ```bash
 pip install -e ".[speech,llm,vision,tts,windows,dev]"
-python -m pytest tests/ -q
+python scripts/verify.py
 ```
+
+`scripts/verify.py` is the full gate every change must pass: pytest,
+ruff, `black --check`, and mypy (pass step names to run a subset, e.g.
+`python scripts/verify.py tests lint`). The same gate runs in CI on
+Windows and Linux with all extras installed, plus a core-only job that
+proves the suite still passes with every optional extra missing.
 
 There are over a hundred tests covering settings, the Iris-to-Sentry data migration, the LLM engine's message assembly, vision
 and OCR, TTS, memory, timing, transcription and hotkey parsing. They fake the

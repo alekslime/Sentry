@@ -44,3 +44,8 @@ locate_samples.jsonl
 # Output of eval_locate.py
 locate_eval.jsonl
 eval_out/
+
+# Tool caches (local only, never committed)
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/

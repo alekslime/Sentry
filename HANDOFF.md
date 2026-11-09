@@ -17,8 +17,10 @@ The README has the short version. This file is the detail.
 - **If a real-hardware result looks like a bug, first confirm which code ran.**
   Grep for a string that only exists in the new code on the machine that ran
   it. This has already caused one false bug report (stale `main.py`).
-- There is **no CI** on purpose. Run the tests yourself:
-  `python -m pytest tests -q`.
+- CI runs on every push/PR (`.github/workflows/ci.yml`): the full gate
+  (`python scripts/verify.py` -- pytest + ruff + black + mypy) on Windows
+  and Linux with all extras, plus a core-only minimal job. Run the same
+  gate locally before pushing.
 
 ## Current state
 
