@@ -91,6 +91,7 @@ module = [
     "openwakeword.*",
     "sounddevice",
     "faster_whisper",
+    "faster_whisper.*",
     "pytesseract",
 ]
 ignore_missing_imports = true
