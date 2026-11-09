@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any, cast
 
-from llama_cpp import Llama
+from llama_cpp import CreateChatCompletionResponse, Llama
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "screenshot. You may be given a screen description and/or verbatim "
     "on-screen text alongside the user's question; use these silently to "
     "make your answer specific, but never narrate them back (avoid phrases "
-    "like \"I can see...\", \"It looks like...\", \"I notice...\"). Only "
+    'like "I can see...", "It looks like...", "I notice..."). Only '
     "reference what's on screen when it's needed to justify the advice "
     "itself, not to prove you looked. If the screen description and the "
     "verbatim text disagree, trust the verbatim text. Give concrete, "
@@ -268,13 +269,24 @@ class LLMEngine:
             messages.append({"role": "assistant", "content": past_response})
         messages.append({"role": "user", "content": user_text})
 
+        # `create_chat_completion`'s stubs only accept pydantic message
+        # models, but at runtime it also accepts the plain-dict form used
+        # here (confirmed against real llama-cpp-python on hardware, and
+        # relied on by vision/model.py too) -- the stubs are narrower than
+        # the real contract, hence the cast rather than a payload reshape.
         result = self._model.create_chat_completion(
-            messages=messages,
+            messages=cast(Any, messages),
             max_tokens=max_tokens,
             temperature=temperature,
             repeat_penalty=repeat_penalty,
         )
-        text = result["choices"][0]["message"]["content"].strip()
+        # The declared union includes a streaming Iterator, but with the
+        # default stream=False this always returns the full response dict.
+        response = cast(CreateChatCompletionResponse, result)
+        # A null content (shouldn't normally happen) degrades to an empty
+        # reply rather than an AttributeError -- same convention as
+        # classify_yes_no below and vision/model.py's describe()/locate().
+        text = (response["choices"][0]["message"]["content"] or "").strip()
 
         logger.debug(
             "LLM generated %d chars for input %r (%d history turns)",
@@ -293,12 +305,16 @@ class LLMEngine:
         failure like `generate()`; callers decide how to degrade.
         """
         result = self._model.create_chat_completion(
-            messages=[
-                {"role": "system", "content": instructions},
-                {"role": "user", "content": user_text},
-            ],
+            messages=cast(
+                Any,
+                [
+                    {"role": "system", "content": instructions},
+                    {"role": "user", "content": user_text},
+                ],
+            ),
             max_tokens=max_tokens,
             temperature=0.0,
         )
-        content = result["choices"][0]["message"]["content"] or ""
+        response = cast(CreateChatCompletionResponse, result)
+        content = response["choices"][0]["message"]["content"] or ""
         return content.strip().lower().startswith("yes")

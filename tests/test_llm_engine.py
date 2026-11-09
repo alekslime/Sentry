@@ -27,6 +27,9 @@ def fake_llama_cpp(monkeypatch):
     """
     fake_module = types.ModuleType("llama_cpp")
     fake_module.Llama = MagicMock()
+    # Only used inside typing.cast(), which ignores it at runtime -- any
+    # placeholder keeps `from llama_cpp import ...` working under the fake.
+    fake_module.CreateChatCompletionResponse = dict
     monkeypatch.setitem(sys.modules, "llama_cpp", fake_module)
     # Drop any previously-imported copy so it re-imports against our fake.
     monkeypatch.delitem(sys.modules, "llm.engine", raising=False)
@@ -177,6 +180,17 @@ def test_generate_none_history_behaves_like_empty_list(monkeypatch) -> None:
 
     sent_messages = fake_model.create_chat_completion.call_args.kwargs["messages"]
     assert len(sent_messages) == 2  # system + user only, no history entries
+
+
+def test_generate_null_content_returns_empty_string_instead_of_crashing(monkeypatch) -> None:
+    # The response schema types content as nullable; a null content used to
+    # crash generate() with AttributeError (None.strip()). It now degrades
+    # to an empty reply, matching classify_yes_no and vision/model.py.
+    engine_module = _import_engine()
+    llm, fake_model = _build_engine_with_fake_model(monkeypatch, engine_module)
+    fake_model.create_chat_completion.return_value = {"choices": [{"message": {"content": None}}]}
+
+    assert llm.generate("hello") == ""
 
 
 # --- classify_yes_no (screen-intent fallback) --------------------------------
