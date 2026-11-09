@@ -13,8 +13,9 @@ baselines so you can tell "works" from "looks plausible".
 from __future__ import annotations
 
 import random
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Callable, Iterable, NamedTuple
+from typing import NamedTuple
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -102,16 +103,17 @@ def resize_longest_side(image: Image.Image, max_dimension: int | None) -> Image.
 # --- scenes -------------------------------------------------------------
 
 
-def _font(size: int) -> ImageFont.ImageFont:
+def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    # The union is load_default's real return type: the sized path loads a
+    # TrueType default, the fallback a bitmap one (in current Pillow these
+    # are siblings, not parent/child).
     try:
         return ImageFont.load_default(size=size)
     except TypeError:  # Pillow < 10.1 has no sized default font
         return ImageFont.load_default()
 
 
-def make_scene(
-    seed: int, size: tuple[int, int] = (1280, 720), n_items: int = 4
-) -> Scene:
+def make_scene(seed: int, size: tuple[int, int] = (1280, 720), n_items: int = 4) -> Scene:
     """A light-gray canvas with `n_items` distinct colored shapes.
 
     Items go in separate cells of a 3x2 grid so they never overlap, and

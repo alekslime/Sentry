@@ -3,7 +3,7 @@
 `pytesseract` is only a wrapper around a system-level Tesseract install,
 so `OCRReader.__init__` must fail loudly and helpfully when that binary
 isn't found -- covered here without mocking, since a missing/wrong path
-is a real thing this test can reproduce directly. Iris's own confidence-
+is a real thing this test can reproduce directly. Sentry's own confidence-
 filtering logic (`OCRReader.read`) is covered separately with a mocked
 `pytesseract.image_to_data`, so it doesn't depend on Tesseract's actual
 recognition accuracy.
@@ -20,10 +20,26 @@ from __future__ import annotations
 import shutil
 
 import pytest
+
+pytest.importorskip("pytesseract", reason="vision extra (pytesseract) not installed")
+pytest.importorskip("PIL", reason="vision extra (Pillow) not installed")
+
+# These imports follow the importorskip guards -- the vision extra is
+# optional and Sentry degrades without it.
 import pytesseract
 from PIL import Image
 
 from vision.ocr import OCRReader
+
+# The end-to-end test below needs the real Tesseract *binary* (pytesseract
+# is only a wrapper around it), which is a system install, not a pip
+# package: `apt install tesseract-ocr` on Linux, the installer from
+# https://github.com/tesseract-ocr/tesseract on Windows (CI provisions
+# both). Skips with an explicit reason where it is missing.
+requires_tesseract = pytest.mark.skipif(
+    shutil.which("tesseract") is None,
+    reason="tesseract binary not on PATH (install Tesseract OCR to run this test)",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -48,35 +64,42 @@ def test_raises_runtime_error_when_tesseract_binary_missing(monkeypatch) -> None
         OCRReader()
 
 
-def test_real_tesseract_extracts_rendered_text() -> None:
-    # This sandbox happens to have the real Tesseract binary installed, so
-    # this exercises the actual OCR engine end-to-end rather than a mock,
-    # unlike everything else in this file. Skips cleanly on a machine
-    # without Tesseract, since this is a real-engine smoke test, not a
-    # test of Iris's own logic (that's covered below).
-    if shutil.which("tesseract") is None:
-        pytest.skip("tesseract binary not installed in this environment")
+def _load_test_font():
+    """First usable TrueType font for rendering OCR-legible test text.
 
-    from PIL import ImageDraw, ImageFont
+    PIL's default bitmap font is too small/blurry for Tesseract to read
+    reliably -- a real TrueType font at a larger size is needed for a
+    stable result. Skips the test when no candidate exists rather than
+    failing on an illegible rendering.
+    """
+    from PIL import ImageFont
+
+    for candidate in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux
+        r"C:\Windows\Fonts\arial.ttf",  # Windows
+    ):
+        try:
+            return ImageFont.truetype(candidate, 28)
+        except OSError:
+            continue
+    pytest.skip("no TrueType test font found (tried DejaVu Sans-Bold, Arial)")
+
+
+@requires_tesseract
+def test_real_tesseract_extracts_rendered_text() -> None:
+    # Exercises the actual OCR engine end-to-end rather than a mock,
+    # unlike everything else in this file. A real-engine smoke test, not a
+    # test of Sentry's own logic (that's covered below).
+    from PIL import ImageDraw
 
     image = Image.new("RGB", (300, 60), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
-    try:
-        # PIL's default bitmap font is too small/blurry for Tesseract to
-        # read reliably -- a real TrueType font at a larger size is needed
-        # for a stable result. DejaVu Sans is Linux-only; fall back to the
-        # default font (best-effort) elsewhere rather than failing the test.
-        font = ImageFont.truetype(
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28
-        )
-    except OSError:
-        font = ImageFont.load_default()
-    draw.text((10, 10), "Hello Iris", fill=(0, 0, 0), font=font)
+    draw.text((10, 10), "Hello Sentry", fill=(0, 0, 0), font=_load_test_font())
 
     reader = OCRReader(min_confidence=0)
     result = reader.read(image)
 
-    assert "Iris" in result
+    assert "Sentry" in result
 
 
 def test_filters_out_words_below_confidence_threshold(monkeypatch) -> None:

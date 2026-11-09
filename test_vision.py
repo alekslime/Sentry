@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -48,7 +48,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger("test_vision")
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from vision.capture import ScreenCapture
 from vision.model import VisionModel
@@ -65,7 +65,7 @@ def run_describe_check() -> None:
     print(f"  Saved: {full_path.resolve()} (size={full.size})")
 
     print("Shrinking to 378x378 (single-tile-encoder scale, for eyeballing legibility)...")
-    shrunk = full.resize((378, 378), Image.LANCZOS)
+    shrunk = full.resize((378, 378), Image.Resampling.LANCZOS)
     shrunk_path = Path("debug_shrunk_378.png")
     shrunk.save(shrunk_path)
     print(f"  Saved: {shrunk_path.resolve()}")
@@ -101,7 +101,9 @@ def _draw_box_pct(draw: ImageDraw.ImageDraw, img_size, x, y, w, h, color, label)
     draw.text((left + 4, max(0, top - 18)), label, fill=color)
 
 
-def _draw_box_resized_px(draw: ImageDraw.ImageDraw, img_size, nx, ny, x, y, w, h, color, label) -> None:
+def _draw_box_resized_px(
+    draw: ImageDraw.ImageDraw, img_size, nx, ny, x, y, w, h, color, label
+) -> None:
     """Interpretation B: x/y/w/h are pixel coordinates in the model's own
     internal resized (nx x ny) space -- HANDOFF.md's untested theory.
     Scales resized-space pixels back up to the real captured image size."""
@@ -124,8 +126,10 @@ def run_locate_samples(targets: list[str]) -> None:
     full = capture.capture()
     print(f"  Captured size={full.size}")
 
-    print("\nLoading vision model (MiniCPM-V-2.6) with verbose=True "
-          "(needed to see llama.cpp's internal nx=/ny= resize lines)...")
+    print(
+        "\nLoading vision model (MiniCPM-V-2.6) with verbose=True "
+        "(needed to see llama.cpp's internal nx=/ny= resize lines)..."
+    )
     vm = VisionModel(n_gpu_layers=0, verbose=True)
 
     for target in targets:
@@ -137,17 +141,19 @@ def run_locate_samples(targets: list[str]) -> None:
 
         if location is None:
             print("  locate() returned None (parse failure) -- see WARNING log above.")
-            record = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+            record: dict[str, object] = {
+                "timestamp": datetime.now(UTC).isoformat(),
                 "target": target,
                 "image_size": list(full.size),
                 "result": None,
             }
         else:
-            print(f"  found={location.found} label={location.label!r} "
-                  f"x={location.x} y={location.y} w={location.w} h={location.h}")
+            print(
+                f"  found={location.found} label={location.label!r} "
+                f"x={location.x} y={location.y} w={location.w} h={location.h}"
+            )
             record = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "target": target,
                 "image_size": list(full.size),
                 "result": location._asdict(),
@@ -158,8 +164,14 @@ def run_locate_samples(targets: list[str]) -> None:
                 draw = ImageDraw.Draw(annotated)
                 # Interpretation A: percent-of-image (documented contract)
                 _draw_box_pct(
-                    draw, full.size, location.x, location.y, location.w, location.h,
-                    color="lime", label=f"A: pct  {target[:20]}",
+                    draw,
+                    full.size,
+                    location.x,
+                    location.y,
+                    location.w,
+                    location.h,
+                    color="lime",
+                    label=f"A: pct  {target[:20]}",
                 )
                 # NOTE: interpretation B (pixel-in-resized-space) needs the
                 # nx/ny values from the verbose llama.cpp log lines printed
@@ -171,8 +183,10 @@ def run_locate_samples(targets: list[str]) -> None:
                 safe_target = "".join(c if c.isalnum() else "_" for c in target)[:40]
                 out_path = Path(f"locate_sample_{safe_target}.png")
                 annotated.save(out_path)
-                print(f"  Saved annotated screenshot (box A = percent-of-image "
-                      f"interpretation): {out_path.resolve()}")
+                print(
+                    f"  Saved annotated screenshot (box A = percent-of-image "
+                    f"interpretation): {out_path.resolve()}"
+                )
                 print("  To check interpretation B (pixel-in-resized-space), take the")
                 print("  nx=/ny= values from the log lines above and eyeball the raw")
                 print("  x/y/w/h against them manually before trusting either theory.")
@@ -188,7 +202,7 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "locate":
         targets = sys.argv[2:]
         if not targets:
-            print("Usage: python test_vision.py locate \"target 1\" \"target 2\" ...")
+            print('Usage: python test_vision.py locate "target 1" "target 2" ...')
             sys.exit(1)
         run_locate_samples(targets)
     else:

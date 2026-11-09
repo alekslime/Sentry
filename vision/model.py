@@ -47,10 +47,10 @@ import base64
 import io
 import json
 import logging
-from typing import NamedTuple
+from typing import Any, NamedTuple, cast
 
-from llama_cpp import Llama, LlamaGrammar
-from llama_cpp.llama_chat_format import MiniCPMv26ChatHandler
+from llama_cpp import CreateChatCompletionResponse, Llama, LlamaGrammar
+from llama_cpp.llama_chat_format import Llava15ChatHandler, MiniCPMv26ChatHandler
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -213,16 +213,19 @@ class VisionModel:
         try:
             if local_model_path:
                 if not local_mmproj_path:
-                    raise ValueError(
-                        "local_mmproj_path is required when local_model_path is set."
-                    )
+                    raise ValueError("local_mmproj_path is required when local_model_path is set.")
                 logger.info(
                     "Loading local vision model from '%s' (mmproj='%s', n_ctx=%d)...",
                     local_model_path,
                     local_mmproj_path,
                     n_ctx,
                 )
-                chat_handler = MiniCPMv26ChatHandler(
+                # Typed as the Llava15 base (which MiniCPMv26ChatHandler
+                # subclasses): `from_pretrained` below is inherited from
+                # that base and declared to return it, so the base is the
+                # only annotation both branches satisfy. At runtime both
+                # branches hold a real MiniCPMv26ChatHandler.
+                chat_handler: Llava15ChatHandler = MiniCPMv26ChatHandler(
                     clip_model_path=local_mmproj_path, verbose=verbose
                 )
                 self._model = Llama(
@@ -304,13 +307,17 @@ class VisionModel:
         # under-penalized model can get stuck exactly repeating a short
         # token sequence for the rest of its budget instead of finishing
         # a real description. Confirmed on real hardware 2026-07-17.
+        # Plain-dict messages and a non-streaming response: same casts as
+        # llm/engine.py -- the stubs are narrower than the real contract
+        # (see the comment there).
         result = self._model.create_chat_completion(
-            messages=messages,
+            messages=cast(Any, messages),
             max_tokens=max_tokens,
             temperature=0.1,
             repeat_penalty=repeat_penalty,
         )
-        content = result["choices"][0]["message"]["content"]
+        response = cast(CreateChatCompletionResponse, result)
+        content = response["choices"][0]["message"]["content"]
         text = content.strip() if content else ""
 
         logger.debug("Vision model generated %d chars: %r", len(text), text)
@@ -349,9 +356,7 @@ class VisionModel:
         to show right now," not two different error states.
         """
         if self._locate_grammar is None:
-            self._locate_grammar = LlamaGrammar.from_json_schema(
-                json.dumps(LOCATE_JSON_SCHEMA)
-            )
+            self._locate_grammar = LlamaGrammar.from_json_schema(json.dumps(LOCATE_JSON_SCHEMA))
 
         data_uri = _image_to_data_uri(image)
         messages = [
@@ -365,13 +370,14 @@ class VisionModel:
             },
         ]
         result = self._model.create_chat_completion(
-            messages=messages,
+            messages=cast(Any, messages),
             max_tokens=max_tokens,
             temperature=0.1,
             repeat_penalty=repeat_penalty,
             grammar=self._locate_grammar,
         )
-        content = result["choices"][0]["message"]["content"]
+        response = cast(CreateChatCompletionResponse, result)
+        content = response["choices"][0]["message"]["content"]
         raw = content.strip() if content else ""
         logger.debug("Vision model locate() generated %d chars: %r", len(raw), raw)
 

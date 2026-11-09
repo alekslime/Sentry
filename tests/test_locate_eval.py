@@ -5,6 +5,10 @@ No model is involved: a fake `locate` stands in for MiniCPM-V.
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("PIL", reason="vision extra (Pillow) not installed")
+
 from vision.locate_eval import (
     PERCENT,
     PIXELS,
@@ -50,12 +54,10 @@ def test_to_pixel_box_percent_pixels_and_resized() -> None:
 
 
 def test_to_pixel_box_rejects_bad_input() -> None:
-    for kwargs in ({"interpretation": "nope"}, {"interpretation": RESIZED}):
-        try:
-            to_pixel_box(1, 1, 1, 1, (10, 10), **kwargs)
-        except ValueError:
-            continue
-        raise AssertionError(f"expected ValueError for {kwargs}")
+    with pytest.raises(ValueError, match="unknown interpretation"):
+        to_pixel_box(1, 1, 1, 1, (10, 10), interpretation="nope")
+    with pytest.raises(ValueError, match="model_size is required"):
+        to_pixel_box(1, 1, 1, 1, (10, 10), interpretation=RESIZED)
 
 
 def test_scenes_are_deterministic_and_boxes_do_not_overlap() -> None:
@@ -173,11 +175,13 @@ def test_report_verdicts_for_blind_and_accurate_models() -> None:
 
     scenes = [make_scene(1), make_scene(2)]
 
-    blind = run_trials(scenes, lambda img, tgt: LocateResult(True, 22, 100, 100, 100), [PERCENT, PIXELS])
+    blind = run_trials(
+        scenes, lambda img, tgt: LocateResult(True, 22, 100, 100, 100), [PERCENT, PIXELS]
+    )
     assert "not localizing" in format_report(blind, scenes, [PERCENT, PIXELS], None)
 
     truth = {(s.seed, i.target): i.box for s in scenes for i in s.items}
-    seed_of = {}
+    seed_of: dict[str, list[int]] = {}
     for s in scenes:
         for i in s.items:
             seed_of.setdefault(i.target, []).append(s.seed)
@@ -190,9 +194,12 @@ def test_report_verdicts_for_blind_and_accurate_models() -> None:
             sx, sy = w / scene.image.size[0], h / scene.image.size[1]
             return LocateResult(
                 True,
-                round(left * sx / w * 100), round(top * sy / h * 100),
-                round((right - left) * sx / w * 100), round((bottom - top) * sy / h * 100),
+                round(left * sx / w * 100),
+                round(top * sy / h * 100),
+                round((right - left) * sx / w * 100),
+                round((bottom - top) * sy / h * 100),
             )
+
         return answer
 
     good = []

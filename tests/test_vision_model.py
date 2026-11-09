@@ -25,6 +25,9 @@ import types
 from unittest.mock import MagicMock
 
 import pytest
+
+pytest.importorskip("PIL", reason="vision extra (Pillow) not installed")
+
 from PIL import Image
 
 
@@ -37,6 +40,8 @@ def fake_llama_cpp(monkeypatch):
     """
     fake_module = types.ModuleType("llama_cpp")
     fake_module.Llama = MagicMock()
+    # Only used inside typing.cast(), which ignores it at runtime.
+    fake_module.CreateChatCompletionResponse = dict
     fake_module.LlamaGrammar = MagicMock()
     # from_json_schema is a classmethod in the real library -- return a
     # sentinel so tests can assert it was actually built from our schema.
@@ -44,6 +49,9 @@ def fake_llama_cpp(monkeypatch):
 
     fake_chat_format = types.ModuleType("llama_cpp.llama_chat_format")
     fake_chat_format.MiniCPMv26ChatHandler = MagicMock()
+    # Imported by vision.model only as a static annotation for the chat
+    # handler variable; never instantiated under the fake.
+    fake_chat_format.Llava15ChatHandler = MagicMock()
 
     monkeypatch.setitem(sys.modules, "llama_cpp", fake_module)
     monkeypatch.setitem(sys.modules, "llama_cpp.llama_chat_format", fake_chat_format)
@@ -151,9 +159,7 @@ def test_locate_substitutes_target_into_the_prompt() -> None:
     vm.locate(Image.new("RGB", (100, 100)), target="the print icon")
 
     messages = vm._model.create_chat_completion.call_args.kwargs["messages"]
-    user_text_block = next(
-        block for block in messages[1]["content"] if block["type"] == "text"
-    )
+    user_text_block = next(block for block in messages[1]["content"] if block["type"] == "text")
     assert "the print icon" in user_text_block["text"]
 
 

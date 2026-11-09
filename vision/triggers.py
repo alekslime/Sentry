@@ -17,8 +17,9 @@ Order of checks:
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Sequence
 from functools import lru_cache
-from typing import Callable, NamedTuple, Sequence
+from typing import NamedTuple
 
 
 class TriggerDecision(NamedTuple):

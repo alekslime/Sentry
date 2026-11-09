@@ -6,19 +6,20 @@ import it directly by relying on the project root being on `sys.path`,
 same as `preview_island_manual_check.py` and other root-level scripts
 already do.
 
-Importing `main` at all requires every one of its top-level imports to
-succeed, including the optional voice/llm/vision/tts extras' packages
-(PySide6, mss, Pillow, sounddevice, ...) -- those are try/except
-ImportError-guarded in main.py itself for graceful degradation at
-*runtime*, but the import machinery still needs the packages installed
-to reach that except branch cleanly in a dev/CI environment. If this
-file fails to collect with an ImportError, it means one of those isn't
-installed here, not that `_resize_for_vision` is broken -- see
-pyproject.toml's optional-dependencies for what to install.
+Importing `main` needs only the core dependencies (PySide6, pydantic,
+PyYAML) -- the optional voice/llm/vision/tts extras are try/except
+ImportError-guarded in main.py itself for graceful degradation. This
+file additionally needs real PIL images, so it skips where Pillow
+(the vision extra) isn't installed.
 """
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("PIL", reason="vision extra (Pillow) not installed")
+
+# These imports follow the importorskip guard.
 from PIL import Image
 
 from main import _resize_for_vision

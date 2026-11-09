@@ -14,7 +14,7 @@ enabled implicitly. See `docs/DECISIONS.md`.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import mss
@@ -86,7 +86,7 @@ class ScreenCapture:
 
         if save_debug_screenshots:
             debug_screenshot_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+            timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
             out_path = debug_screenshot_dir / f"screenshot_{timestamp}.png"
             image.save(out_path)
             logger.info("Debug screenshot saved to %s", out_path)
