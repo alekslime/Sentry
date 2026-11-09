@@ -204,6 +204,47 @@ def _resize_for_vision(image: Image.Image, max_dimension: int | None) -> Image.I
     return image.resize(new_size, Image.Resampling.LANCZOS)
 
 
+def _caption_and_ocr(
+    vision_model: VisionModel | None,
+    ocr_reader: OCRReader | None,
+    vision_image: Image.Image,
+    image: Image.Image,
+    caption_prompt: str,
+    max_tokens: int,
+    repeat_penalty: float,
+) -> tuple[str, str]:
+    """Run scene captioning and OCR over a screenshot; return `(caption, ocr_text)`.
+
+    The two are independent -- captioning reads `vision_image` (downscaled
+    for the model) while OCR deliberately reads `image` (the original
+    full-resolution capture; downscaling before Tesseract would degrade
+    verbatim text reading -- see `_resize_for_vision`'s docstring). Either
+    side may be `None` (subsystem unavailable) or raise (model/OCR
+    failure); both cases yield `""` for that side while the other still
+    runs.
+    """
+    caption = ""
+    if vision_model is not None:
+        try:
+            caption = vision_model.describe(
+                vision_image,
+                prompt=caption_prompt,
+                max_tokens=max_tokens,
+                repeat_penalty=repeat_penalty,
+            )
+        except Exception:
+            logger.exception("Screen captioning failed — continuing without scene description.")
+
+    ocr_text = ""
+    if ocr_reader is not None:
+        try:
+            ocr_text = ocr_reader.read(image)
+        except Exception:
+            logger.exception("OCR failed — continuing without verbatim on-screen text.")
+
+    return caption, ocr_text
+
+
 class _TurnState(TypedDict):
     """Mutable per-turn bookkeeping shared by main()'s nested callbacks.
 
@@ -627,27 +668,15 @@ def main() -> int:
         if not should_caption_or_ocr:
             return text
 
-        caption = ""
-        if vision_model is not None:
-            try:
-                caption = vision_model.describe(
-                    vision_image,
-                    prompt=settings.vision.caption_prompt,
-                    max_tokens=settings.vision.max_tokens,
-                    repeat_penalty=settings.vision.repeat_penalty,
-                )
-            except Exception:
-                logger.exception("Screen captioning failed — continuing without scene description.")
-
-        ocr_text = ""
-        if ocr_reader is not None:
-            try:
-                # Deliberately `image`, not `vision_image` — OCR wants
-                # full resolution for verbatim text accuracy; see
-                # _resize_for_vision's docstring.
-                ocr_text = ocr_reader.read(image)
-            except Exception:
-                logger.exception("OCR failed — continuing without verbatim on-screen text.")
+        caption, ocr_text = _caption_and_ocr(
+            vision_model=vision_model,
+            ocr_reader=ocr_reader,
+            vision_image=vision_image,
+            image=image,
+            caption_prompt=settings.vision.caption_prompt,
+            max_tokens=settings.vision.max_tokens,
+            repeat_penalty=settings.vision.repeat_penalty,
+        )
 
         if not caption and not ocr_text:
             return text
