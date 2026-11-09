@@ -27,7 +27,7 @@ The README has the short version. This file is the detail.
 | Milestone | State | Verified |
 | --- | --- | --- |
 | 1-6 Scaffolding, wake word, speech to text, LLM, vision, Aura | Done | Real hardware |
-| 7 Visual guidance (pointing box) | Code complete, **off by default** (`vision.enable_locate: false`) | `locate()` ran end to end once on a Windows laptop; accuracy never measured |
+| 7 Visual guidance (pointing box) | OCR word-box pointing, **off by default** (`vision.enable_locate: false`) | 95% hit rate / 0.9px mean error on 20 rendered scenes (real Tesseract), 2026-11-09; replaces VLM `locate()` (IoU 0.000) |
 | 8 Voice responses (Piper TTS) | Done | Real hardware (RTX 3070 Ti) |
 | 9 Conversation memory | Done | Real hardware |
 | 10 Dynamic Island | Widget, global hotkey (`ctrl+shift+space`) and wake-word activation done. Part C (settings in the island) and Part D (retire `app/main_window.py`) open | README reports activation working. Island rendering verified offscreen only; see below |
@@ -65,6 +65,14 @@ shares are from isolated residency tests):
 
 ## Recent changes (this session)
 
+- **OCR-box pointing replaces dead VLM locate** (`vision/text_locate.py`,
+  `vision/ocr.py` `read_with_boxes` + one-pass cache, `main.py` rewired).
+  `/tmp/eval_text_locate.py` on 20 rendered scenes with known word truth:
+  95% hit rate (centre inside true box), 0.9px mean centre error, 0.28s
+  OCR per scene — vs 0% / IoU 0.000 for the VLM head. The one miss was a
+  Tesseract recall miss (word unseen), not a matching error. Text targets
+  only; misses keep the retry-prompt abort. `enable_locate` stays false
+  by default. Eval script is scratch under `/tmp`, not in the repo.
 - **Optional-import guards catch OSError, not just ImportError** (`main.py`,
   5 sites). A missing *system* library (PortAudio for sounddevice, CUDA DLLs)
   raises OSError from inside the imported package, which used to escape the

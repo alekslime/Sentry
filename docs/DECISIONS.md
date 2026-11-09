@@ -1701,3 +1701,27 @@ time and the base rate (0.000) gives no signal to climb. A different
 vision model with native grounding is the more promising direction.
 Revisit when either is cheap to try; the harness (`eval_locate.py` +
 `vision/locate_eval.py`) is the acceptance gate.
+
+## 2026-11-09 - OCR word-box pointing replaces the VLM locate() head
+
+**Decision:** pointing matches the spoken query against Tesseract word
+boxes (`vision/text_locate.py`) instead of asking MiniCPM-V for
+coordinates. `vision.enable_locate` stays `false` by default; when on,
+a query hit flashes the matched word's box and a miss keeps the
+Milestone 7 retry-prompt abort. `VisionModel.locate()` and its eval
+harness stay in the tree (tested, still the acceptance gate for any
+future VLM grounding attempt); only the app path changed.
+
+**Evidence:** `/tmp/eval_text_locate.py` (scratch, not in repo), 20
+rendered scenes with known word positions, real Tesseract binary:
+95% hit rate (reported centre inside the target word's true box),
+0.9px mean centre error, 0.28s OCR per scene — against 0% / IoU 0.000
+for the VLM head on its 20-trial eval. The single miss was OCR recall
+(the word never appeared in `image_to_data`), not a matching error.
+Scope is text targets only: icons and nameless shapes can never match,
+by design (return None rather than guess).
+
+**Cost note:** `OCRReader.read_with_boxes()` shares one Tesseract pass
+with `read()` through a last-image cache, so pointing adds no extra OCR
+when captioning/OCR runs on the same capture anyway.
+

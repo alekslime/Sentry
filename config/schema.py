@@ -382,28 +382,26 @@ class VisionSettings(BaseModel):
     enable_locate: bool = Field(
         default=False,
         description=(
-            "Milestone 7's locate()-and-point-at-it feature. Defaults to "
-            "OFF: MiniCPM-V-2.6's native grounding format is `<ref>/<box>` "
-            "with 0-1000-scale corner coordinates, not the free-form 0-100 "
-            "percent x/y/w/h JSON this milestone's prompt/schema invented, "
-            "and it's unconfirmed whether that native format even survives "
-            "the llama.cpp GGUF + mmproj path this repo uses (see "
-            "docs/DECISIONS.md, 2026-07-16 entry). Until that's resolved, "
-            "leave this off -- flip to true only to resume investigating; "
-            "the rest of vision (captioning/OCR) is unaffected either way."
+            "Point at on-screen text: match the query against Tesseract "
+            "word boxes (vision/text_locate.py) and flash the winning box. "
+            "Defaults to OFF. Measured 95% hit rate / 0.9px mean error on "
+            "20 rendered scenes 2026-11-09; replaces the VLM locate() head, "
+            "which measured IoU 0.000 (see docs/DECISIONS.md). Text "
+            "targets only — icons and nameless shapes never match. The "
+            "rest of vision (captioning/OCR) is unaffected either way."
         ),
     )
     locate_trigger_keywords: list[str] = Field(
         default_factory=lambda: ["where", "find", "point", "show me", "locate"],
         description=(
             "When vision.enabled is true, vision.enable_locate is true, and "
-            "a vision model is loaded, VisionModel.locate() only runs if "
+            "the OCR reader loaded, text pointing only runs if "
             "the transcribed/debug query contains at least one of these "
             'keywords (case-insensitive, whole words with common endings, e.g. "locate" matches "located") -- keeps the '
-            "locate() call (and its found=False retry-prompt abort path) "
+            "word-box match (and its no-match retry-prompt abort path) "
             "from firing on queries that were never asking to be shown/ "
             "pointed at something. Set to an empty list to attempt "
-            "locate() on every query."
+            "pointing on every query."
         ),
     )
     ocr_enabled: bool = Field(

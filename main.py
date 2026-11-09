@@ -106,12 +106,14 @@ try:
     from vision.capture import ScreenCapture
     from vision.model import VisionModel
     from vision.ocr import OCRReader
+    from vision.text_locate import locate_text
 
     _VISION_AVAILABLE = True
 except (ImportError, OSError):
     ScreenCapture = None  # type: ignore[assignment,misc]
     VisionModel = None  # type: ignore[assignment,misc]
     OCRReader = None  # type: ignore[assignment,misc]
+    locate_text = None  # type: ignore[assignment]
     _VISION_AVAILABLE = False
 
 # `tts.engine` depends on the optional "tts" extra (piper-tts, sounddevice)
@@ -127,45 +129,6 @@ except (ImportError, OSError):
     _TTS_AVAILABLE = False
 
 
-def _percent_box_to_pixels(
-    location, image_size: tuple[int, int], monitor_left: int, monitor_top: int
-) -> tuple[int, int, int, int]:
-    """Convert a `VisionModel.locate()` result (percent of the captured
-    image, 0-100 each) to real screen pixel coordinates.
-
-    `image_size` is the captured screenshot's own resolution (`PIL.Image
-    .size`), which `x`/`y`/`w`/`h` are percentages of --  not necessarily
-    the same as the on-screen monitor resolution in a scaled-DPI setup,
-    but assumed equal here (same assumption `vision/capture.py` already
-    makes -- see its `mss`-based `capture()`). `monitor_left`/
-    `monitor_top` offset the result to real screen coordinates -- both
-    0 unless `vision.monitor_index` selects something other than the
-    combined virtual screen (index 0).
-
-    Milestone 7, Part B.3. Pure/no side effects so it's unit-testable on
-    its own, unlike the rest of this file's wiring (see module docstring:
-    "no feature logic belongs here" -- this is the one piece of actual
-    arithmetic Part B.3 needed, kept as small and isolated as possible).
-    """
-    img_w, img_h = image_size
-
-    # `location.x/y/w/h` are individually valid (0-100 each, see
-    # VisionLocation) but not guaranteed to be valid *together* -- e.g.
-    # x=100, w=100 is each in-range but describes a box entirely past
-    # the right edge of the frame. Clip w/h against the remaining room
-    # after x/y so the box is always fully inside the captured frame.
-    x_pct = max(0, min(100, location.x))
-    y_pct = max(0, min(100, location.y))
-    w_pct = max(0, min(100 - x_pct, location.w))
-    h_pct = max(0, min(100 - y_pct, location.h))
-
-    x = monitor_left + round(x_pct / 100 * img_w)
-    y = monitor_top + round(y_pct / 100 * img_h)
-    w = round(w_pct / 100 * img_w)
-    h = round(h_pct / 100 * img_h)
-    return x, y, w, h
-
-
 def _resize_for_vision(image: Image.Image, max_dimension: int | None) -> Image.Image:
     """Downscale `image` so its longer side is at most `max_dimension`
     pixels, preserving aspect ratio. `max_dimension=None` or an image
@@ -174,8 +137,8 @@ def _resize_for_vision(image: Image.Image, max_dimension: int | None) -> Image.I
     are only ever read from here on, never mutated in place).
 
     Milestone 11, Part A (2026-07-17): added after real hardware showed a
-    full 1920x1080 capture costs ~234s in `vision_model.describe()`/
-    `.locate()` — MiniCPM-V's own adaptive slicing computes an 8-slice
+    full 1920x1080 capture costs ~234s in `vision_model.describe()`
+    — MiniCPM-V's own adaptive slicing computes an 8-slice
     grid from a full-res image, and each slice's CLIP encoding is
     CPU-bound regardless of `vision.n_gpu_layers` (see that field's
     docstring in `config/schema.py`). Shrinking the input directly
@@ -185,14 +148,12 @@ def _resize_for_vision(image: Image.Image, max_dimension: int | None) -> Image.I
     — `_build_prompt_with_screen_context` keeps the OCR reader on the
     original, full-resolution capture (downscaling before Tesseract would
     degrade verbatim text reading, which is the opposite of what
-    `max_image_dimension` is for), and passes the *same* resized instance
-    to both `describe()`/`locate()` and — critically —
-    `_percent_box_to_pixels`'s `image_size` argument, since `locate()`'s
-    percentages are relative to whatever image it was actually given.
+    `max_image_dimension` is for), and passes the resized instance to
+    `describe()`.
 
-    Pure/no side effects, like `_percent_box_to_pixels` above — same
-    "one piece of pure arithmetic" carve-out from this file's "no feature
-    logic belongs here" rule, kept unit-testable on its own.
+    Pure/no side effects — the "one piece of pure arithmetic" carve-out
+    from this file's "no feature logic belongs here" rule, kept
+    unit-testable on its own.
     """
     if max_dimension is None:
         return image
@@ -509,8 +470,8 @@ def main() -> int:
             conversation_store = None
 
     # Milestone 7, Part B.3: real on-screen offset of the monitor being
-    # captured, so locate()'s percent-of-image coordinates can be converted
-    # to real screen pixels (see _percent_box_to_pixels). Stays (0, 0) --
+    # captured, so OCR word-box pixels can be converted to real screen
+    # pixels for the target box. Stays (0, 0) --
     # correct for monitor_index=0 (the combined virtual screen, the
     # default) -- if this lookup fails for any reason; a wrong offset on a
     # genuine multi-monitor, non-default monitor_index setup would show
@@ -580,7 +541,7 @@ def main() -> int:
         # nice-to-have, never worth failing the whole query over.
         #
         # Returns None (Milestone 7, Part B.3) specifically when
-        # locate() reports found=False or a parse failure for a query
+        # OCR-box pointing finds no on-screen word matching a query
         # that asked to find/point at something (locate_trigger_keywords
         # matched) -- that case aborts the whole query with a retry
         # prompt instead of falling back to a captionless answer. Every
@@ -592,9 +553,12 @@ def main() -> int:
 
         vision_keywords = settings.vision.trigger_keywords
         locate_keywords = settings.vision.locate_trigger_keywords
+        # Pointing is OCR-box based (vision/text_locate.py): it needs the
+        # Tesseract reader, not the vision model — the VLM locate() head
+        # measured IoU 0.000 on real hardware (see docs/DECISIONS.md).
         should_locate = (
             settings.vision.enable_locate
-            and vision_model is not None
+            and ocr_reader is not None
             and (not locate_keywords or keyword_match(text, locate_keywords))
         )
 
@@ -631,36 +595,39 @@ def main() -> int:
             return text
 
         # Milestone 11, Part A: vision_image is what actually goes to
-        # the vision model (describe()/locate()) — image itself stays
+        # the vision model (describe()) — image itself stays
         # full-resolution for OCR below. See _resize_for_vision's
         # docstring for why these must NOT be the same downscaled copy.
         vision_image = _resize_for_vision(image, settings.vision.max_image_dimension)
 
-        # Milestone 7, Part B.3: attempt to find and flash a target box
-        # before captioning/OCR. found=False and a genuine parse failure
-        # are treated identically here, per the Milestone 7 design
-        # decision — both abort this query with a retry prompt rather
-        # than silently falling back to a normal answer, since the user
-        # specifically asked to be shown something.
-        # `should_locate` already implies `vision_model is not None` (see
-        # its definition above); the second conjunct just says so to the
+        # OCR-box pointing (replaces the VLM locate() head, which measured
+        # IoU 0.000 on real hardware — see vision/text_locate.py): match the
+        # query against Tesseract word boxes on the full-resolution capture.
+        # read_with_boxes() shares its one Tesseract pass with the read()
+        # call inside _caption_and_ocr below via the OCRReader cache, so
+        # pointing costs no extra OCR when captioning/OCR also runs. A miss
+        # aborts this query with a retry prompt rather than silently falling
+        # back to a normal answer, since the user specifically asked to be
+        # shown something.
+        # `should_locate` already implies `ocr_reader is not None` (see
+        # its definition above); the extra conjuncts just say so to the
         # type checker.
-        if should_locate and vision_model is not None:
+        if should_locate and ocr_reader is not None and locate_text is not None:
             try:
-                location = vision_model.locate(
-                    vision_image, text, repeat_penalty=settings.vision.repeat_penalty
-                )
+                ocr_words = ocr_reader.read_with_boxes(image)
             except Exception:
-                logger.exception("Vision locate() failed — continuing without a target box.")
-                location = None
+                logger.exception("OCR word boxes failed — continuing without a target box.")
+                ocr_words = []
 
-            if location is not None and location.found:
-                px, py, pw, ph = _percent_box_to_pixels(
-                    location, vision_image.size, vision_monitor_left, vision_monitor_top
-                )
+            match = locate_text(ocr_words, text)
+
+            if match is not None:
+                px = vision_monitor_left + match.word.left
+                py = vision_monitor_top + match.word.top
+                pw, ph = match.word.width, match.word.height
                 logger.info(
-                    "locate() found %r at screen pixels (%d, %d, %d, %d)",
-                    location.label,
+                    "OCR pointing matched %r at screen pixels (%d, %d, %d, %d)",
+                    match.word.text,
                     px,
                     py,
                     pw,
@@ -669,10 +636,9 @@ def main() -> int:
                 vision_locate_bridge.report_found(px, py, pw, ph)
             else:
                 logger.info(
-                    "locate() found nothing to point at for query %r (label=%r) "
+                    "OCR pointing found nothing to point at for query %r "
                     "— aborting this query with a retry prompt.",
                     text,
-                    location.label if location is not None else None,
                 )
                 llm_bridge.report_failure(
                     "I couldn't find anything on screen matching that — want to try again?"
@@ -723,8 +689,8 @@ def main() -> int:
             else:
                 prompt = _build_prompt_with_screen_context(text)
             if prompt is None:
-                # Milestone 7, Part B.3: locate() found nothing to point
-                # at for this query. The retry-prompt failure was already
+                # Milestone 7, Part B.3: OCR pointing found nothing to
+                # point at for this query. The retry-prompt failure was already
                 # reported via llm_bridge.report_failure() inside
                 # _build_prompt_with_screen_context — nothing left to do
                 # here except stop before spending an LLM call on a query
@@ -944,7 +910,7 @@ def main() -> int:
         island.collapse()
 
     def on_target_box_found(x: int, y: int, w: int, h: int) -> None:
-        # Runs on the main thread. Milestone 7, Part B.3: locate() found
+        # Runs on the main thread. Milestone 7, Part B.3: pointing found
         # something on the worker thread — the actual Aura call has to
         # happen here, since AuraController/GlowAuraRenderer own real Qt
         # widgets. Geometry only, orthogonal to AuraState — doesn't touch

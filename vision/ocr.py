@@ -17,8 +17,10 @@ without OCR rather than crashing the whole app.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import shutil
+from typing import NamedTuple
 
 import pytesseract
 from PIL import Image
@@ -26,6 +28,17 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 DEFAULT_MIN_CONFIDENCE = 60.0
+
+
+class WordBox(NamedTuple):
+    """One confident OCR word with its pixel box in the source image."""
+
+    text: str
+    confidence: float
+    left: int
+    top: int
+    width: int
+    height: int
 
 
 class OCRReader:
@@ -41,6 +54,11 @@ class OCRReader:
         min_confidence: float = DEFAULT_MIN_CONFIDENCE,
     ) -> None:
         self._min_confidence = min_confidence
+        # Last OCR result, keyed by image content hash: `read()` and
+        # `read_with_boxes()` share one Tesseract pass when called on the
+        # same screenshot (as main.py's locate-then-caption flow does).
+        self._cache_key: bytes | None = None
+        self._cache_boxes: list[WordBox] = []
 
         if tesseract_cmd:
             pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
@@ -59,19 +77,30 @@ class OCRReader:
 
         logger.info("OCR reader ready (tesseract_cmd=%s).", pytesseract.pytesseract.tesseract_cmd)
 
-    def read(self, image: Image.Image) -> str:
-        """Extract text from a screenshot, filtering out low-confidence words.
+    def read_with_boxes(self, image: Image.Image) -> list[WordBox]:
+        """Extract confident words with their pixel boxes in `image`.
 
         Uses `image_to_data` (not the simpler `image_to_string`) so each
         word's confidence score can be checked individually -- screenshots
         often have UI chrome/icons that OCR misreads with low confidence,
         and including those tokens verbatim would be worse than dropping
-        them.
+        them. Text grounding (`vision/text_locate.py`) matches queries
+        against these boxes.
         """
-        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+        key = hashlib.blake2b(image.tobytes(), digest_size=16).digest()
+        if key == self._cache_key:
+            return list(self._cache_boxes)
 
-        words: list[str] = []
-        for text, conf in zip(data["text"], data["conf"]):
+        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+        boxes: list[WordBox] = []
+        for text, conf, left, top, width, height in zip(
+            data["text"],
+            data["conf"],
+            data["left"],
+            data["top"],
+            data["width"],
+            data["height"],
+        ):
             stripped = text.strip()
             if not stripped:
                 continue
@@ -81,8 +110,29 @@ class OCRReader:
                 continue
             if confidence < self._min_confidence:
                 continue
-            words.append(stripped)
+            boxes.append(
+                WordBox(
+                    text=stripped,
+                    confidence=confidence,
+                    left=int(left),
+                    top=int(top),
+                    width=int(width),
+                    height=int(height),
+                )
+            )
 
-        result = " ".join(words)
-        logger.debug("OCR extracted %d chars from %d confident words.", len(result), len(words))
+        self._cache_key = key
+        self._cache_boxes = boxes
+        logger.debug("OCR extracted %d confident words.", len(boxes))
+        return list(boxes)
+
+    def read(self, image: Image.Image) -> str:
+        """Extract text from a screenshot, filtering out low-confidence words.
+
+        Same output as before -- now just the joined text of
+        `read_with_boxes()`, sharing its result cache.
+        """
+        boxes = self.read_with_boxes(image)
+        result = " ".join(box.text for box in boxes)
+        logger.debug("OCR extracted %d chars from %d confident words.", len(result), len(boxes))
         return result

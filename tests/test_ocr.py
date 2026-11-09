@@ -109,6 +109,10 @@ def test_filters_out_words_below_confidence_threshold(monkeypatch) -> None:
         lambda *args, **kwargs: {
             "text": ["Hello", "blurry", "Iris", ""],
             "conf": ["95", "12", "88", "-1"],
+            "left": [1, 2, 3, 4],
+            "top": [5, 6, 7, 8],
+            "width": [10, 20, 30, 40],
+            "height": [11, 21, 31, 41],
         },
     )
 
@@ -125,7 +129,14 @@ def test_returns_empty_string_when_nothing_above_confidence(monkeypatch) -> None
     monkeypatch.setattr(
         pytesseract,
         "image_to_data",
-        lambda *args, **kwargs: {"text": ["blurry", "noise"], "conf": ["10", "5"]},
+        lambda *args, **kwargs: {
+            "text": ["blurry", "noise"],
+            "conf": ["10", "5"],
+            "left": [1, 2],
+            "top": [3, 4],
+            "width": [10, 20],
+            "height": [11, 21],
+        },
     )
 
     reader = OCRReader(tesseract_cmd="/fake/tesseract", min_confidence=60)
@@ -139,3 +150,54 @@ def test_sets_tesseract_cmd_when_provided() -> None:
 
     assert pytesseract.pytesseract.tesseract_cmd == "/custom/path/tesseract"
     assert reader is not None
+
+
+def test_read_with_boxes_returns_confident_words_with_pixel_boxes(monkeypatch) -> None:
+    monkeypatch.setattr(
+        pytesseract,
+        "image_to_data",
+        lambda *args, **kwargs: {
+            "text": ["Export", "blurry", ""],
+            "conf": ["95", "12", "-1"],
+            "left": [100, 200, 300],
+            "top": [50, 60, 70],
+            "width": [80, 90, 95],
+            "height": [20, 21, 22],
+        },
+    )
+
+    reader = OCRReader(tesseract_cmd="/fake/tesseract", min_confidence=60)
+    boxes = reader.read_with_boxes(Image.new("RGB", (8, 8)))
+
+    assert len(boxes) == 1
+    assert boxes[0].text == "Export"
+    assert boxes[0].confidence == 95.0
+    assert (boxes[0].left, boxes[0].top, boxes[0].width, boxes[0].height) == (100, 50, 80, 20)
+
+
+def test_read_and_read_with_boxes_share_one_tesseract_pass(monkeypatch) -> None:
+    calls: list[bool] = []
+
+    def fake_image_to_data(*args, **kwargs):
+        calls.append(True)
+        return {
+            "text": ["Export"],
+            "conf": ["95"],
+            "left": [100],
+            "top": [50],
+            "width": [80],
+            "height": [20],
+        }
+
+    monkeypatch.setattr(pytesseract, "image_to_data", fake_image_to_data)
+
+    reader = OCRReader(tesseract_cmd="/fake/tesseract", min_confidence=60)
+    image = Image.new("RGB", (1920, 1080), color=(9, 9, 9))
+    boxes = reader.read_with_boxes(image)
+    text = reader.read(image)
+    other = reader.read(Image.new("RGB", (1920, 1080), color=(10, 10, 10)))
+
+    assert len(calls) == 2  # shared pass for the same image, fresh pass for new pixels
+    assert [box.text for box in boxes] == ["Export"]
+    assert text == "Export"
+    assert other == "Export"  # same fake output; the point is the second Tesseract call
