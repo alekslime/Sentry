@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import sys
+import threading
 import types
 import wave
 from unittest.mock import MagicMock, patch
@@ -317,3 +318,47 @@ def test_speak_strips_markdown_before_synthesizing(fake_piper_and_sounddevice, t
     assert "`" not in synthesized_text
     assert "Verbatim Text on Screen" in synthesized_text
     assert "x = 1" in synthesized_text
+
+
+def test_stop_during_synthesis_skips_playback(fake_piper_and_sounddevice, tmp_path) -> None:
+    engine_module = _import_engine()
+    fake_piper, fake_sd = fake_piper_and_sounddevice
+    engine, fake_voice = _make_engine_with_fake_voice(engine_module, fake_piper, tmp_path)
+
+    entered = threading.Event()
+    release = threading.Event()
+    real_synth = fake_voice.synthesize_wav.side_effect
+
+    def gated_synth(text, wav_file, **kwargs):
+        entered.set()
+        assert release.wait(timeout=10)
+        return real_synth(text, wav_file, **kwargs)
+
+    fake_voice.synthesize_wav.side_effect = gated_synth
+
+    completed: list[bool] = []
+
+    def speak() -> None:
+        engine.speak("hello there")
+        completed.append(True)
+
+    thread = threading.Thread(target=speak, daemon=True)
+    thread.start()
+    assert entered.wait(timeout=10)
+    engine.stop()
+    release.set()
+    thread.join(timeout=10)
+
+    assert completed == [True]
+    assert not fake_sd.play.called
+
+
+def test_idle_stop_does_not_cancel_next_speak(fake_piper_and_sounddevice, tmp_path) -> None:
+    engine_module = _import_engine()
+    fake_piper, fake_sd = fake_piper_and_sounddevice
+    engine, _fake_voice = _make_engine_with_fake_voice(engine_module, fake_piper, tmp_path)
+
+    engine.stop()  # nothing in flight: must not arm the cancel flag
+    engine.speak("hello there")
+
+    assert fake_sd.play.called

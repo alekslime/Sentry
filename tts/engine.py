@@ -47,6 +47,7 @@ import logging
 import re
 import subprocess
 import sys
+import threading
 import wave
 from pathlib import Path
 from typing import Any
@@ -137,7 +138,16 @@ class TTSEngine:
         # overlapping speak() calls (shouldn't normally happen -- see
         # main.py's interrupt_on_new_query handling -- but worth being
         # defensive about) don't both try to drive the output device.
+        # _speak_active spans synthesis+playback (unlike _speaking, which
+        # is playback only) so stop() during the multi-second synthesis
+        # phase still cancels the turn: speak() checks _stop_requested
+        # after synthesizing and skips playback. All three transition
+        # under _state_lock so a stop() landing exactly at a speak()
+        # boundary can't be lost or leak into the next utterance.
+        self._state_lock = threading.Lock()
         self._speaking = False
+        self._speak_active = False
+        self._stop_requested = False
 
         try:
             if local_model_path and local_config_path:
@@ -225,7 +235,9 @@ class TTSEngine:
 
     def speak(self, text: str) -> None:
         """Synthesize `text` and play it on the default output device,
-        blocking until playback finishes (or `stop()` cancels it).
+        blocking until playback finishes (or `stop()` cancels it --
+        including during synthesis, in which case the synthesized audio
+        is discarded and nothing plays).
 
         Empty/whitespace-only input is a silent no-op, same convention as
         `LLMEngine.generate()`.
@@ -242,35 +254,60 @@ class TTSEngine:
         if not speech_text:
             return
 
-        wav_bytes = self.synthesize_wav_bytes(speech_text)
-        with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
-            sample_rate = wav_file.getframerate()
-            n_channels = wav_file.getnchannels()
-            frames = wav_file.readframes(wav_file.getnframes())
-
-        # Shape-agnostic on purpose: mono stays a 1-D int16 array while
-        # stereo is reshaped to (frames, channels) below, and `sd.play`
-        # accepts both. A fixed-shape annotation would be a lie for one
-        # of the two paths.
-        samples: npt.NDArray[Any] = np.frombuffer(frames, dtype=np.int16)
-        if n_channels > 1:
-            samples = samples.reshape(-1, n_channels)
-
-        logger.debug(
-            "Playing %d samples at %dHz (%d chars of text).", len(samples), sample_rate, len(text)
-        )
-        self._speaking = True
+        with self._state_lock:
+            self._speak_active = True
+            self._stop_requested = False
         try:
-            sd.play(samples, samplerate=sample_rate)
-            sd.wait()  # blocks until playback finishes or sd.stop() is called
+            wav_bytes = self.synthesize_wav_bytes(speech_text)
+            with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+                sample_rate = wav_file.getframerate()
+                n_channels = wav_file.getnchannels()
+                frames = wav_file.readframes(wav_file.getnframes())
+
+            # Shape-agnostic on purpose: mono stays a 1-D int16 array while
+            # stereo is reshaped to (frames, channels) below, and `sd.play`
+            # accepts both. A fixed-shape annotation would be a lie for one
+            # of the two paths.
+            samples: npt.NDArray[Any] = np.frombuffer(frames, dtype=np.int16)
+            if n_channels > 1:
+                samples = samples.reshape(-1, n_channels)
+
+            with self._state_lock:
+                cancelled = self._stop_requested
+            if cancelled:
+                logger.debug("speak() cancelled during synthesis; skipping playback.")
+                return
+
+            logger.debug(
+                "Playing %d samples at %dHz (%d chars of text).",
+                len(samples),
+                sample_rate,
+                len(text),
+            )
+            with self._state_lock:
+                self._speaking = True
+            try:
+                sd.play(samples, samplerate=sample_rate)
+                sd.wait()  # blocks until playback finishes or sd.stop() is called
+            finally:
+                with self._state_lock:
+                    self._speaking = False
         finally:
-            self._speaking = False
+            with self._state_lock:
+                self._speak_active = False
 
     def stop(self) -> None:
-        """Cancel in-progress playback immediately, if any. Safe to call
-        even when nothing is playing (Milestone 8's early-dismiss
-        counterpart to `AuraController.clear_target_box()` -- see
-        `main.py`'s `on_transcribed`).
+        """Cancel an in-progress `speak()` immediately, if any: aborts
+        playback via the output device, or discards the turn during
+        synthesis so nothing plays. Safe to call even when nothing is
+        playing (Milestone 8's early-dismiss counterpart to
+        `AuraController.clear_target_box()` -- see `main.py`'s
+        `on_transcribed`); an idle stop() never cancels a *later*
+        utterance.
         """
-        if self._speaking:
+        with self._state_lock:
+            if self._speak_active:
+                self._stop_requested = True
+            speaking = self._speaking
+        if speaking:
             sd.stop()
