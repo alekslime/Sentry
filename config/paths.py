@@ -51,9 +51,7 @@ DEFAULT_CONFIG_FILE: Path = ROOT_DIR / "config" / "default_config.yaml"
 USER_CONFIG_FILE: Path = CONFIG_DIR / "config.yaml"
 
 
-def migrate_legacy_app_data(
-    legacy_dir: Path | None = None, new_dir: Path | None = None
-) -> bool:
+def migrate_legacy_app_data(legacy_dir: Path | None = None, new_dir: Path | None = None) -> bool:
     """Move the pre-rename (Iris) data folder to the new (Sentry) location.
 
     Only acts when the legacy folder exists and the new one does not, so it

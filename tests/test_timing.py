@@ -107,9 +107,7 @@ def test_summary_is_callable_multiple_times_without_error():
     second = timer.summary()
     # total keeps growing between calls (real elapsed time), but the
     # llm stage's recorded duration shouldn't change once ended.
-    assert re.search(r"llm=(\d+)ms", first).group(1) == re.search(
-        r"llm=(\d+)ms", second
-    ).group(1)
+    assert re.search(r"llm=(\d+)ms", first).group(1) == re.search(r"llm=(\d+)ms", second).group(1)
 
 
 def test_double_start_stage_resets_the_clock():

@@ -149,7 +149,9 @@ class WakeWordDetector:
             in_cooldown = (now - last_detected) < self._cooldown_seconds
 
             if score >= self._threshold and not in_cooldown:
-                self._consecutive_counts[model_name] = self._consecutive_counts.get(model_name, 0) + 1
+                self._consecutive_counts[model_name] = (
+                    self._consecutive_counts.get(model_name, 0) + 1
+                )
                 if self._consecutive_counts[model_name] >= self._consecutive_required:
                     logger.info("Wake word detected: %s (score=%.3f)", model_name, score)
                     self._on_detected(model_name, float(score))

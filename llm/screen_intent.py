@@ -58,7 +58,9 @@ def needs_screen(
     try:
         answer = engine.classify_yes_no(instructions, text)
     except Exception:
-        logger.exception("Screen-intent classifier failed; treating the query as not needing the screen.")
+        logger.exception(
+            "Screen-intent classifier failed; treating the query as not needing the screen."
+        )
         return False
     logger.info("Screen-intent classifier for %r: %s", text, "yes" if answer else "no")
     return answer

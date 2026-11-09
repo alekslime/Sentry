@@ -96,9 +96,13 @@ VARIANTS: dict[str, tuple[str, str]] = {
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--n-gpu-layers", type=int, default=None)
-    parser.add_argument("--repo-id", default=None, help="Hugging Face repo of a different GGUF LLM to test")
+    parser.add_argument(
+        "--repo-id", default=None, help="Hugging Face repo of a different GGUF LLM to test"
+    )
     parser.add_argument("--filename", default=None, help="GGUF file inside --repo-id")
     args = parser.parse_args()
 
@@ -130,17 +134,23 @@ def main() -> int:
     print(f"\nQuestions: {n}")
     print(f"Keywords only:  {n - len(keyword_wrong)}/{n} correct")
     print()
-    print(f"{'variant':<15} {'correct':>9} {'missed':>8} {'false alarms':>13} {'calls':>6} {'avg s/call':>11}")
+    print(
+        f"{'variant':<15} {'correct':>9} {'missed':>8} {'false alarms':>13} {'calls':>6} {'avg s/call':>11}"
+    )
 
     results: dict[str, list[str]] = {}
     for name, (instructions, template) in VARIANTS.items():
         calls = 0
         seconds = 0.0
 
-        def classifier(text: str) -> bool:
+        # `template`/`instructions` are bound as defaults (not read from the
+        # enclosing loop scope) so each variant's classifier provably uses
+        # its own prompt, even though it is only ever called synchronously
+        # within its own iteration today.
+        def classifier(text: str, _template=template, _instructions=instructions) -> bool:
             nonlocal calls, seconds
             start = time.perf_counter()
-            answer = needs_screen(engine, template.format(q=text), instructions)
+            answer = needs_screen(engine, _template.format(q=text), _instructions)
             seconds += time.perf_counter() - start
             calls += 1
             return answer
@@ -154,11 +164,15 @@ def main() -> int:
         missed = sum(w.startswith("missed") for w in wrong)
         alarms = len(wrong) - missed
         avg = seconds / calls if calls else 0.0
-        print(f"{name:<15} {n - len(wrong):>6}/{n} {missed:>8} {alarms:>13} {calls:>6} {avg:>11.2f}")
+        print(
+            f"{name:<15} {n - len(wrong):>6}/{n} {missed:>8} {alarms:>13} {calls:>6} {avg:>11.2f}"
+        )
 
     best = max(results, key=lambda key: (n - len(results[key])))
     verdict = "beats" if len(results[best]) < len(keyword_wrong) else "does NOT beat"
-    print(f"\nBest variant: {best!r} ({n - len(results[best])}/{n}), which {verdict} keywords only ({n - len(keyword_wrong)}/{n}).")
+    print(
+        f"\nBest variant: {best!r} ({n - len(results[best])}/{n}), which {verdict} keywords only ({n - len(keyword_wrong)}/{n})."
+    )
     print(f"\nStill wrong with {best!r}:")
     print("\n".join(f"  {line}" for line in results[best]) or "  none")
     print("\nWrong with keywords only:")

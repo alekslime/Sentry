@@ -31,10 +31,10 @@ class AuraState(Enum):
 # Default color mapping per the Aura design language (see docs/ARCHITECTURE.md).
 # Themes may override these; this is the fallback "default" theme.
 DEFAULT_STATE_COLORS: dict[AuraState, RGB] = {
-    AuraState.IDLE: RGB(66, 133, 244),                    # Blue
-    AuraState.LISTENING: RGB(52, 168, 83),                # Green
-    AuraState.THINKING: RGB(155, 89, 182),                # Purple
+    AuraState.IDLE: RGB(66, 133, 244),  # Blue
+    AuraState.LISTENING: RGB(52, 168, 83),  # Green
+    AuraState.THINKING: RGB(155, 89, 182),  # Purple
     AuraState.WAITING_FOR_CONFIRMATION: RGB(241, 196, 15),  # Yellow
-    AuraState.ERROR: RGB(231, 76, 60),                    # Red
-    AuraState.SPEAKING: RGB(0, 188, 212),                 # Cyan
+    AuraState.ERROR: RGB(231, 76, 60),  # Red
+    AuraState.SPEAKING: RGB(0, 188, 212),  # Cyan
 }

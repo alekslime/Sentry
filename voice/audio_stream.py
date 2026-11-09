@@ -75,7 +75,9 @@ class MicrophoneStream:
         )
         self._stream.start()
 
-    def _callback(self, indata: np.ndarray, frames: int, time_info: object, status: sd.CallbackFlags) -> None:
+    def _callback(
+        self, indata: np.ndarray, frames: int, time_info: object, status: sd.CallbackFlags
+    ) -> None:
         if status:
             logger.warning("Audio input status flag set: %s", status)
         # indata shape is (frames, channels); flatten to 1D mono.

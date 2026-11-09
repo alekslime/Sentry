@@ -30,8 +30,8 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 # Stage order is display order, not enforced order -- `summary()` prints
 # whichever stages actually got recorded for this turn, in this sequence,

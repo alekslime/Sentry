@@ -167,7 +167,7 @@ class LLMSettings(BaseModel):
             "a screenshot. You may be given a screen description and/or verbatim "
             "on-screen text alongside the user's question; use these silently to "
             "make your answer specific, but never narrate them back (avoid "
-            "phrases like \"I can see...\", \"It looks like...\", \"I "
+            'phrases like "I can see...", "It looks like...", "I '
             "notice...\"). Only reference what's on screen when it's needed to "
             "justify the advice itself, not to prove you looked. If the screen "
             "description and the verbatim text disagree, trust the verbatim "
@@ -358,7 +358,7 @@ class VisionSettings(BaseModel):
         description=(
             "When vision.enabled is true, screen capture + captioning only "
             "run if the transcribed/debug query contains at least one of "
-            "these keywords (case-insensitive, whole words with common endings: \"look\" matches \"looking\" and \"screen\" matches \"screenshot\", but \"see\" does not match \"seem\" and \"here\" does not match \"where\"). Keeps "
+            'these keywords (case-insensitive, whole words with common endings: "look" matches "looking" and "screen" matches "screenshot", but "see" does not match "seem" and "here" does not match "where"). Keeps '
             "vision's real per-query latency (MiniCPM-V is CPU-only) from "
             "being paid on queries that don't need screen context. Set to "
             "an empty list to run vision on every query (old behavior)."
@@ -368,11 +368,11 @@ class VisionSettings(BaseModel):
         default=False,
         description=(
             "When a query matches none of trigger_keywords, ask the local LLM "
-            "one yes/no question (\"does this need the screen?\") before giving "
+            'one yes/no question ("does this need the screen?") before giving '
             "up on screen context. Catches questions like \"what's wrong with "
-            "my timeline?\" that never say \"this\" or \"here\". Costs one tiny "
+            'my timeline?" that never say "this" or "here". Costs one tiny '
             "extra LLM call on queries that matched no keyword, nothing on "
-            "keyword matches. Any failure counts as \"no\". Set to false for "
+            'keyword matches. Any failure counts as "no". Set to false for '
             "keyword-only gating (the old behavior). Off by default: with "
             "the default 0.5B model it answered yes to almost everything "
             "(see docs/DECISIONS.md, 2026-10-08). Ignored when "
@@ -399,7 +399,7 @@ class VisionSettings(BaseModel):
             "When vision.enabled is true, vision.enable_locate is true, and "
             "a vision model is loaded, VisionModel.locate() only runs if "
             "the transcribed/debug query contains at least one of these "
-            "keywords (case-insensitive, whole words with common endings, e.g. \"locate\" matches \"located\") -- keeps the "
+            'keywords (case-insensitive, whole words with common endings, e.g. "locate" matches "located") -- keeps the '
             "locate() call (and its found=False retry-prompt abort path) "
             "from firing on queries that were never asking to be shown/ "
             "pointed at something. Set to an empty list to attempt "
@@ -552,8 +552,8 @@ class IslandSettings(BaseModel):
         description=(
             "Global (system-wide) keyboard shortcut that toggles the "
             "island between collapsed/expanded, parsed by "
-            "app/hotkey.py:parse_hotkey (\"+\"-separated, e.g. "
-            "\"ctrl+alt+i\"). Windows-only currently -- see "
+            'app/hotkey.py:parse_hotkey ("+"-separated, e.g. '
+            '"ctrl+alt+i"). Windows-only currently -- see '
             "docs/DECISIONS.md. If parsing fails or the OS-level "
             "registration fails (e.g. already bound by another app), Sentry "
             "logs a warning and continues without it; the wake word "

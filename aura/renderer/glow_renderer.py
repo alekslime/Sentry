@@ -74,9 +74,9 @@ PEAK_ALPHA = 235
 # --- Multicolor gradient: a QConicalGradient centered on the screen whose
 # stops orbit the current state's base hue, continuously rotating so the
 # border reads as alive/flowing rather than a flat static tint.
-GRADIENT_STOPS = 13          # more stops = smoother hue interpolation
+GRADIENT_STOPS = 13  # more stops = smoother hue interpolation
 GRADIENT_HUE_SPREAD_DEG = 45  # how far stops swing from the anchor hue
-ROTATION_PERIOD_S = 9.0       # seconds for one full 360-degree rotation
+ROTATION_PERIOD_S = 9.0  # seconds for one full 360-degree rotation
 GRADIENT_FPS = 30
 GRADIENT_SAT = 235
 GRADIENT_VAL = 245
@@ -238,7 +238,7 @@ class _AuraOverlayWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self._anchor_hue = 0.0  # current state's base hue, 0-360 (animated on state change)
-        self._rotation = 0.0    # current gradient rotation angle, degrees
+        self._rotation = 0.0  # current gradient rotation angle, degrees
         self._mask: QImage | None = None  # cached blurred shape, rebuilt on resize
         self._mask_cache_key: tuple[int, int] | None = None
 
@@ -272,13 +272,13 @@ class _AuraOverlayWidget(QWidget):
             self._mask_cache_key = cache_key
         return self._mask
 
-    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming convention)
+    def resizeEvent(self, event) -> None:
         # Invalidate the cached mask; it'll be rebuilt lazily on next paint.
         self._mask = None
         self._mask_cache_key = None
         super().resizeEvent(event)
 
-    def paintEvent(self, event) -> None:  # noqa: N802 (Qt naming convention)
+    def paintEvent(self, event) -> None:
         mask = self._ensure_mask()
         if mask is None:
             return
@@ -383,7 +383,7 @@ class _TargetBoxWidget(QWidget):
         else:
             self._dwell_start = None
 
-    def paintEvent(self, event) -> None:  # noqa: N802 (Qt naming convention)
+    def paintEvent(self, event) -> None:
         if self._rect is None:
             return
         painter = QPainter(self)

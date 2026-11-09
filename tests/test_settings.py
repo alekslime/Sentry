@@ -16,8 +16,6 @@ touches the real `%APPDATA%/Iris` directory.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import yaml
 
 import config.settings as settings_module

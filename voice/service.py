@@ -139,12 +139,16 @@ class VoiceActivationService:
             return
 
         if self._transcriber is None:
-            logger.warning("Utterance captured but speech-to-text is unavailable this session — discarding audio.")
+            logger.warning(
+                "Utterance captured but speech-to-text is unavailable this session — discarding audio."
+            )
             self._on_transcript("")
             return
 
         audio = session.get_audio()
-        logger.info("Utterance captured (%.2fs) — transcribing on a background thread.", audio.size / 16_000)
+        logger.info(
+            "Utterance captured (%.2fs) — transcribing on a background thread.", audio.size / 16_000
+        )
         thread = threading.Thread(target=self._transcribe_worker, args=(audio,), daemon=True)
         thread.start()
 
@@ -168,7 +172,9 @@ class VoiceActivationService:
         should continue running without voice activation in that case
         rather than crashing — the rest of the app doesn't depend on it.
         """
-        logger.info("Voice activation starting (wake word model: %s)", self._voice_settings.wake_word_model)
+        logger.info(
+            "Voice activation starting (wake word model: %s)", self._voice_settings.wake_word_model
+        )
         try:
             self._mic.start()
         except Exception:

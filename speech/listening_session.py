@@ -53,7 +53,9 @@ class ListeningSession:
     ) -> None:
         self._silence_rms_threshold = silence_rms_threshold
         self._end_silence_frames = max(1, round(end_silence_seconds * sample_rate / frame_size))
-        self._initial_timeout_frames = max(1, round(initial_timeout_seconds * sample_rate / frame_size))
+        self._initial_timeout_frames = max(
+            1, round(initial_timeout_seconds * sample_rate / frame_size)
+        )
         self._max_frames = max(1, round(max_duration_seconds * sample_rate / frame_size))
 
         self._buffer: list[np.ndarray] = []

@@ -54,7 +54,9 @@ def _write_yaml(path: Path, data: dict[str, Any]) -> None:
         yaml.safe_dump(data, f, sort_keys=False)
 
 
-def _backfill_missing(user: dict[str, Any], defaults: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+def _backfill_missing(
+    user: dict[str, Any], defaults: dict[str, Any]
+) -> tuple[dict[str, Any], bool]:
     """Add keys present in `defaults` but absent from `user`, recursively.
 
     Existing user values are never touched or reordered, even if the

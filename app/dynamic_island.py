@@ -139,7 +139,9 @@ class DynamicIslandWidget(QWidget):
         self._debug_input: QLineEdit | None = None
         if debug_enabled:
             self._debug_input = QLineEdit(self)
-            self._debug_input.setPlaceholderText('Type a command (debug) — e.g. "what does this mean?"')
+            self._debug_input.setPlaceholderText(
+                'Type a command (debug) — e.g. "what does this mean?"'
+            )
             self._debug_input.setStyleSheet(
                 "QLineEdit {"
                 " background-color: rgba(255, 255, 255, 30);"
@@ -253,7 +255,9 @@ class DynamicIslandWidget(QWidget):
         self.set_state(IslandState.COLLAPSED)
 
     def toggle(self) -> None:
-        self.set_state(IslandState.COLLAPSED if self._state is IslandState.EXPANDED else IslandState.EXPANDED)
+        self.set_state(
+            IslandState.COLLAPSED if self._state is IslandState.EXPANDED else IslandState.EXPANDED
+        )
 
     @property
     def state(self) -> IslandState:
@@ -270,12 +274,16 @@ class DynamicIslandWidget(QWidget):
 
     # -- painting -------------------------------------------------------
 
-    def paintEvent(self, event) -> None:  # noqa: N802 (Qt naming convention)
+    def paintEvent(self, event) -> None:
         rect = self.rect()
         if rect.width() <= 0 or rect.height() <= 0:
             return
 
-        radius = rect.height() / 2.0 if self._state is IslandState.COLLAPSED else EXPANDED_CORNER_RADIUS_PX
+        radius = (
+            rect.height() / 2.0
+            if self._state is IslandState.COLLAPSED
+            else EXPANDED_CORNER_RADIUS_PX
+        )
         # While mid-animation, shrink the radius proportionally so a
         # partially-expanded pill doesn't render an expanded panel's flat
         # corner radius on a still-small, near-pill-shaped rect (which
@@ -349,9 +357,16 @@ class DynamicIslandWidget(QWidget):
         gear_r = 7
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(210, 210, 210, 190))
-        painter.drawEllipse(int(gear_cx - gear_r * 0.45), int(gear_cy - gear_r * 0.45), int(gear_r * 0.9), int(gear_r * 0.9))
+        painter.drawEllipse(
+            int(gear_cx - gear_r * 0.45),
+            int(gear_cy - gear_r * 0.45),
+            int(gear_r * 0.9),
+            int(gear_r * 0.9),
+        )
         pen = QPen(QColor(210, 210, 210, 190))
         pen.setWidthF(1.6)
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(int(gear_cx - gear_r), int(gear_cy - gear_r), int(gear_r * 2), int(gear_r * 2))
+        painter.drawEllipse(
+            int(gear_cx - gear_r), int(gear_cy - gear_r), int(gear_r * 2), int(gear_r * 2)
+        )

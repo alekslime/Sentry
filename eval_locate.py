@@ -27,7 +27,7 @@ import argparse
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -79,19 +79,21 @@ def format_report(
         return "No trials were run."
     n = len(trials)
     answered = [t for t in trials if t.result is not None]
-    found = [t for t in answered if t.result.found]  # type: ignore[union-attr]
+    # The `is not None` repeat is redundant at runtime (`answered` already
+    # filters those out) but lets the type checker narrow `t.result`.
+    found = [t for t in answered if t.result is not None and t.result.found]
     items = {(s.seed, i.target): i for s in scenes for i in s.items}
     baseline = [
-        centered_baseline_iou(items[(t.scene_seed, t.target)], scenes[0].image.size)
-        for t in trials
+        centered_baseline_iou(items[(t.scene_seed, t.target)], scenes[0].image.size) for t in trials
     ]
     baseline_hits = sum(v >= HIT_THRESHOLD for v in baseline) / n
 
+    hit_rate_label = f"hit rate (IoU>={HIT_THRESHOLD:.1f})"
     lines = [
         f"Trials: {n}   (image sent to model downscaled to <= {max_dimension}px)",
         f"Parse failures: {n - len(answered)}   found=False: {len(answered) - len(found)}",
         "",
-        f"{'reading':<10} {'mean IoU':>9} {'hit rate (IoU>=%.1f)' % HIT_THRESHOLD:>22}",
+        f"{'reading':<10} {'mean IoU':>9} {hit_rate_label:>22}",
     ]
     best_hit = 0.0
     for name in interpretations:
@@ -101,11 +103,15 @@ def format_report(
     lines += [
         f"{'baseline':<10} {sum(baseline) / n:>9.3f} {baseline_hits:>21.0%}   (fixed centered box, no skill)",
         "",
-        f"Distinct boxes per scene: {distinct_boxes_per_scene(trials):.2f}"
-        f"  (targets per scene: {len(scenes[0].items)}; ~1.0 means it ignores the question)",
+        (
+            f"Distinct boxes per scene: {distinct_boxes_per_scene(trials):.2f}"
+            f"  (targets per scene: {len(scenes[0].items)}; ~1.0 means it ignores the question)"
+        ),
         "",
     ]
-    percent = summarize(trials, PERCENT, HIT_THRESHOLD).hit_rate if PERCENT in interpretations else 0.0
+    percent = (
+        summarize(trials, PERCENT, HIT_THRESHOLD).hit_rate if PERCENT in interpretations else 0.0
+    )
     if best_hit <= baseline_hits + 0.1:
         lines.append("Verdict: no reading beats the no-skill baseline. locate() is not localizing.")
     elif percent >= best_hit - 0.05:
@@ -118,7 +124,9 @@ def format_report(
     return "\n".join(lines)
 
 
-def save_annotated(scene: Scene, trials: list[Trial], out_dir: Path, model_size, max_dimension) -> None:
+def save_annotated(
+    scene: Scene, trials: list[Trial], out_dir: Path, model_size, max_dimension
+) -> None:
     """Truth in green, the model's guess (percent reading) in red."""
     image = scene.image.copy()
     draw = ImageDraw.Draw(image)
@@ -134,22 +142,37 @@ def save_annotated(scene: Scene, trials: list[Trial], out_dir: Path, model_size,
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--kind", choices=["shapes", "buttons", "both"], default="shapes")
     parser.add_argument("--scenes", type=int, default=5, help="scenes per kind (4 targets each)")
     parser.add_argument("--seed", type=int, default=0, help="first scene seed")
-    parser.add_argument("--max-dimension", type=int, default=512,
-                        help="downscale long side before the model, like the app (0 = full size)")
-    parser.add_argument("--model-size", type=parse_size, default=None, metavar="WxH",
-                        help="the model's internal resize (nx x ny from llama.cpp's verbose log); enables the 'resized' reading")
+    parser.add_argument(
+        "--max-dimension",
+        type=int,
+        default=512,
+        help="downscale long side before the model, like the app (0 = full size)",
+    )
+    parser.add_argument(
+        "--model-size",
+        type=parse_size,
+        default=None,
+        metavar="WxH",
+        help="the model's internal resize (nx x ny from llama.cpp's verbose log); enables the 'resized' reading",
+    )
     parser.add_argument("--n-gpu-layers", type=int, default=0)
     parser.add_argument("--out", default="locate_eval.jsonl", help="append one JSON line per trial")
-    parser.add_argument("--save-images", default=None, metavar="DIR", help="save annotated scenes here")
+    parser.add_argument(
+        "--save-images", default=None, metavar="DIR", help="save annotated scenes here"
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.WARNING,
-                        format="%(levelname)s | %(name)s | %(message)s")
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+        format="%(levelname)s | %(name)s | %(message)s",
+    )
     max_dimension = args.max_dimension or None
     interpretations = [PERCENT, PIXELS] + ([RESIZED] if args.model_size else [])
 
@@ -167,21 +190,37 @@ def main() -> int:
     print(f"Running {total} locate() calls across {len(scenes)} scenes...")
 
     trials: list[Trial] = []
-    stamp = datetime.now(timezone.utc).isoformat()
+    stamp = datetime.now(UTC).isoformat()
     with open(args.out, "a", encoding="utf-8") as out:
         for scene in scenes:
-            scene_trials = run_trials([scene], locate, interpretations, args.model_size, max_dimension)
+            scene_trials = run_trials(
+                [scene], locate, interpretations, args.model_size, max_dimension
+            )
             trials += scene_trials
-            for t in scene_trials:
-                out.write(json.dumps({
-                    "timestamp": stamp, "seed": t.scene_seed, "target": t.target,
-                    "truth": t.truth, "result": None if t.result is None else t.result._asdict(),
-                    "ious": t.ious,
-                }) + "\n")
-            print(f"  scene {scene.seed}: " + ", ".join(
-                f"{t.target.split(' ', 1)[1]}={t.ious[PERCENT]:.2f}" for t in scene_trials))
+            out.writelines(
+                json.dumps(
+                    {
+                        "timestamp": stamp,
+                        "seed": t.scene_seed,
+                        "target": t.target,
+                        "truth": t.truth,
+                        "result": None if t.result is None else t.result._asdict(),
+                        "ious": t.ious,
+                    }
+                )
+                + "\n"
+                for t in scene_trials
+            )
+            print(
+                f"  scene {scene.seed}: "
+                + ", ".join(
+                    f"{t.target.split(' ', 1)[1]}={t.ious[PERCENT]:.2f}" for t in scene_trials
+                )
+            )
             if args.save_images:
-                save_annotated(scene, scene_trials, Path(args.save_images), args.model_size, max_dimension)
+                save_annotated(
+                    scene, scene_trials, Path(args.save_images), args.model_size, max_dimension
+                )
 
     print()
     print(format_report(trials, scenes, interpretations, max_dimension))
