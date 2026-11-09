@@ -1,6 +1,6 @@
 # HANDOFF.md
 
-**Last updated:** 2026-10-08
+**Last updated:** 2026-11-09
 
 Where the project stands right now, what is unverified, and what to do next.
 The README has the short version. This file is the detail.
@@ -38,6 +38,27 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
 
 ## Recent changes (this session)
 
+- **Optional-import guards catch OSError, not just ImportError** (`main.py`,
+  5 sites). A missing *system* library (PortAudio for sounddevice, CUDA DLLs)
+  raises OSError from inside the imported package, which used to escape the
+  guards and kill the app at import. Now it degrades like a missing pip
+  package. Regression test in `tests/test_main_optional_guards.py` (verified
+  it fails on unfixed code). Pushed.
+- **Aura idle CPU fixed: 245.7% -> 9.6%** (mean process CPU over 2 min idle
+  on the i7-6820HQ laptop, measured with psutil sampling; py-spy confirms
+  MainThread no longer sits in `paintEvent`). The overlay repainted a
+  fullscreen image at 30fps forever. It now renders each state's glow once
+  into a cached `QPixmap` (same mask, gradient design and hue-sweep
+  transition, frozen at rotation 0) and repaints only while the cross-fade
+  animation runs. `tests/test_aura_idle.py` pins zero tint work at idle.
+  The README's "holds still, no pulsing" claim is true again. Note: the
+  fade still runs at the code's `TRANSITION_MS` (500ms), unchanged.
+- **STT compute default on CPU is now int8** (`speech/transcriber.py`).
+  Measured 39s (float32) vs 3s (int8) for a 3.5s clip on this laptop's CPU.
+  `device='cpu'` with default compute resolves to int8 with a one-line
+  warning; any explicit value is respected verbatim, including on the
+  CUDA-failure fallback path. Selection logic is a pure function with
+  parametrized tests; `default_config.yaml` comments updated.
 - Stopped tracking generated files (`iris.egg-info/`, `.iris_data/`, debug
   images, `locate_samples.jsonl`) and fixed `.gitignore`.
 - Renamed Iris to Sentry everywhere user-visible. `config/paths.py` moves an old
@@ -58,13 +79,18 @@ Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
 ## Known issues / not yet verified
 
 **Pointing (`locate()`)**
-- Off by default. The model's native grounding output is `<ref>/<box>` with
-  0-1000 corner coordinates, but `locate()` asks for 0-100 percent JSON and the
-  app trusts it. Nobody has measured whether the numbers mean that.
+- Off by default, and **stays off: measured broken on real hardware
+  2026-11-09.** `eval_locate.py` (20 shape trials, MiniCPM-V-2.6 Q4): mean
+  IoU 0.000 on the percent reading the app assumes, 0.013 on pixels, vs
+  0.007 for the no-skill centered-box baseline -- "no reading beats the
+  no-skill baseline. locate() is not localizing." The model varies its
+  boxes per question (3.6 distinct per 4-target scene), so it isn't
+  ignoring the prompt; the coordinates are just wrong. See
+  `docs/DECISIONS.md` (2026-11-09) for the drop decision.
+- The model's native grounding output is `<ref>/<box>` with 0-1000 corner
+  coordinates, but `locate()` asks for 0-100 percent JSON. No reading
+  scored, so this is a model failure, not (only) a conversion error.
   `docs/DECISIONS.md` (2026-07-16) has the background.
-- `eval_locate.py` has **not been run on real hardware yet.** Run
-  `python eval_locate.py --kind both --scenes 5 --save-images eval_out` where the
-  model is installed, and read the verdict line.
 - Limit of that harness: `VisionModel.locate()` clamps every value to 0-100, so
   a model answering on a 0-1000 scale shows up as 100s. Use `--verbose` to see
   the raw JSON the model produced before the clamp.
