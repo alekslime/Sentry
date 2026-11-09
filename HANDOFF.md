@@ -36,6 +36,33 @@ The README has the short version. This file is the detail.
 Test suite: 136 tests, all passing in a sandbox with PySide6 (offscreen),
 Tesseract, faster-whisper and pytesseract installed. They fake the heavy models.
 
+VRAM budget (Quadro M3000M 4GB, measured 2026-11-09, standalone loads +
+full-app idle; per-process breakdown unavailable on this card/driver so
+shares are from isolated residency tests):
+- LLM Qwen 3B Q4, all layers on GPU: ~2.3GB. The only GPU *compute* in
+  the app (0.7s for a short generation).
+- faster-whisper small: ~1.8GB of CUDA weights that inference cannot use
+  (`cudaErrorInvalidDevice` at transcribe time; the int8 CPU fallback does
+  the real work in ~3s). Pure waste on this machine -- setting
+  `speech.device: cpu` in the live config would release it.
+- Vision MiniCPM (0 GPU layers): ~0.3GB of llama.cpp CUDA buffers only;
+  encode and decode both run on CPU (~24s/describe).
+- TTS (Piper, `use_cuda: false`), wake word (onnxruntime CPU), Aura (Qt
+  raster): 0 VRAM, all CPU.
+- Full-app idle total: ~4.0GB / 4.1GB -- saturated. Nothing else fits
+  until whisper's dead CUDA copy is evicted (see above).
+- STT-on-GPU alternative investigated 2026-11-09 and NOT taken:
+  whisper.cpp built from source with CUDA (sm_52) works on this Maxwell
+  card and transcribes the 3.5s probe in ~0.7s using 487MB VRAM (vs 3.0s
+  CPU int8, correct either way). Faster and fits -- but there are no
+  CUDA python wheels, so shipping it means hand-rolled ctypes bindings
+  (or a whisper-server sidecar) plus a second model format to manage, to
+  save ~2s per utterance. Kept faster-whisper int8 CPU; revisit if STT
+  latency ever dominates a turn. Build recipe: VS2019 cl + CUDA 12.6 +
+  cmake -G Ninja -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=52 (default
+  VS-generator picks a nonexistent VS18 -- must pass -G explicitly).
+  Working tree left at C:/tmp/whisper.cpp (scratch, not in repo).
+
 ## Recent changes (this session)
 
 - **Optional-import guards catch OSError, not just ImportError** (`main.py`,
