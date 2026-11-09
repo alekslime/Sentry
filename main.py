@@ -543,8 +543,9 @@ def main() -> int:
         # Returns None (Milestone 7, Part B.3) specifically when
         # OCR-box pointing finds no on-screen word matching a query
         # that asked to find/point at something (locate_trigger_keywords
-        # matched) -- that case aborts the whole query with a retry
-        # prompt instead of falling back to a captionless answer. Every
+        # matched) -- that case answers aloud ("couldn't find
+        # anything...") as a normal spoken response and skips the LLM
+        # call, instead of falling back to a captionless answer. Every
         # other failure path here (capture failure, model load failure,
         # no keyword match) still just degrades to returning `text`
         # unchanged, as before.
@@ -606,9 +607,9 @@ def main() -> int:
         # read_with_boxes() shares its one Tesseract pass with the read()
         # call inside _caption_and_ocr below via the OCRReader cache, so
         # pointing costs no extra OCR when captioning/OCR also runs. A miss
-        # aborts this query with a retry prompt rather than silently falling
-        # back to a normal answer, since the user specifically asked to be
-        # shown something.
+        # is answered aloud ("couldn't find anything...") as a normal spoken
+        # response, since the user specifically asked to be shown something
+        # and silence would look like the box silently not appearing.
         # `should_locate` already implies `ocr_reader is not None` (see
         # its definition above); the extra conjuncts just say so to the
         # type checker.
@@ -635,12 +636,17 @@ def main() -> int:
                 )
                 vision_locate_bridge.report_found(px, py, pw, ph)
             else:
+                # The miss IS the answer: deliver it as a normal (spoken)
+                # response rather than a failure, so the user hears what
+                # happened instead of just not seeing a box. Returning
+                # None still skips the LLM call below -- no point
+                # generating a captionless answer to a pointing question.
                 logger.info(
                     "OCR pointing found nothing to point at for query %r "
-                    "— aborting this query with a retry prompt.",
+                    "— answering aloud instead of flashing a box.",
                     text,
                 )
-                llm_bridge.report_failure(
+                llm_bridge.report_response(
                     "I couldn't find anything on screen matching that — want to try again?"
                 )
                 return None
@@ -690,11 +696,12 @@ def main() -> int:
                 prompt = _build_prompt_with_screen_context(text)
             if prompt is None:
                 # Milestone 7, Part B.3: OCR pointing found nothing to
-                # point at for this query. The retry-prompt failure was already
-                # reported via llm_bridge.report_failure() inside
+                # point at for this query. The spoken "couldn't find
+                # anything" answer was already reported via
+                # llm_bridge.report_response() inside
                 # _build_prompt_with_screen_context — nothing left to do
                 # here except stop before spending an LLM call on a query
-                # we've already decided not to answer normally.
+                # we've already answered.
                 return
 
             # Milestone 9, Part B: fetch recent turns for follow-up

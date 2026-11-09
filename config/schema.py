@@ -380,15 +380,17 @@ class VisionSettings(BaseModel):
         ),
     )
     enable_locate: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Point at on-screen text: match the query against Tesseract "
             "word boxes (vision/text_locate.py) and flash the winning box. "
-            "Defaults to OFF. Measured 95% hit rate / 0.9px mean error on "
+            "Defaults to ON. Measured 95% hit rate / 0.9px mean error on "
             "20 rendered scenes 2026-11-09; replaces the VLM locate() head, "
             "which measured IoU 0.000 (see docs/DECISIONS.md). Text "
-            "targets only — icons and nameless shapes never match. The "
-            "rest of vision (captioning/OCR) is unaffected either way."
+            "targets only — icons and nameless shapes never match. A "
+            "miss is spoken aloud as the answer instead of flashing a "
+            "box. The rest of vision (captioning/OCR) is unaffected "
+            "either way."
         ),
     )
     locate_trigger_keywords: list[str] = Field(
@@ -398,7 +400,7 @@ class VisionSettings(BaseModel):
             "the OCR reader loaded, text pointing only runs if "
             "the transcribed/debug query contains at least one of these "
             'keywords (case-insensitive, whole words with common endings, e.g. "locate" matches "located") -- keeps the '
-            "word-box match (and its no-match retry-prompt abort path) "
+            "word-box match (and its spoken no-match answer) "
             "from firing on queries that were never asking to be shown/ "
             "pointed at something. Set to an empty list to attempt "
             "pointing on every query."
