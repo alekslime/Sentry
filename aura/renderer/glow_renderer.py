@@ -1,7 +1,8 @@
 """A real, visible `AuraRenderer`: a soft ambient glow around the screen
 edges, color-coded per `AuraState`, built from an actual Gaussian blur,
-tinted with a slowly-rotating multicolor gradient (rather than a flat
-color) and cross-faded smoothly between states.
+tinted with a multicolor gradient (rather than a flat color), rendered
+once per state into a cached pixmap, and cross-faded smoothly between
+states.
 
 Replaces `NullAuraRenderer` as Sentry's default renderer (Milestone 6). Built
 as a frameless, click-through, always-on-top top-level widget painted with
@@ -13,25 +14,28 @@ OpenGL/QML dependency.
 Visual model (2026-07-13 rewrite, replacing the flat-tint approach; widened
 to a full-wheel pastel sweep later the same day):
 the blurred edge-band shape is unchanged from the previous version (see
-`_build_blurred_mask()`), but instead of re-tinting it to a single flat
-color per frame, it's re-tinted with a `QConicalGradient` centered on the
-screen: stops sweep through the *entire* hue wheel (+/- 180 degrees around
-the current state's base hue -- i.e. all the way around, not a narrow
-band), at low saturation/high value so every hue reads as pastel rather
-than neon. The gradient's angle continuously rotates, so the effect is a
-full-spectrum pastel wash smoothly circling the border. State is still
-reflected -- the anchor hue (where the sweep's start/end seam sits) cross-
-fades between states (see `_shortest_hue_delta()`) -- but since the sweep
-already spans every hue, a state change now reads mainly as a shift in
-*which hue is currently at a given angle* rather than a change in the
-overall palette, which stays a continuous pastel rainbow throughout.
+`_build_blurred_mask()`), but instead of a single flat color it's tinted
+with a `QConicalGradient` centered on the screen: stops sweep through the
+*entire* hue wheel (+/- 180 degrees around the current state's base hue
+-- i.e. all the way around, not a narrow band), at low saturation/high
+value so every hue reads as pastel rather than neon. State is reflected
+in the anchor hue (where the sweep's start/end seam sits), which sweeps
+through intermediate hues during a transition (see `_shortest_hue_delta()`).
+
+Idle cost (2026-11-09): the gradient angle used to rotate continuously
+at 30fps, repainting a fullscreen image forever (~2.5 idle cores). It is
+now frozen (angle 0) and each state's glow is rendered once into a cached
+`QPixmap` -- repaints happen only while the `TRANSITION_MS` cross-fade
+between states is running, and idle does zero repaint work. Same shape,
+same gradient design, same transition feel; it just holds still, per the
+README's "no pulsing" claim.
 
 Design constraints from docs/ROADMAP.md, honored here:
     - State-based color transitions (idle/listening/thinking/waiting/error)
     - Smooth fade in/out, no sharp/harsh edges (Gaussian blur, unchanged)
-    - A slow, subtle continuous animation (not a sharp flashing pulse) --
-      previously a breathing alpha pulse, now a rotating multicolor
-      gradient; see docs/DECISIONS.md for the history of this element.
+    - Holds still at idle (no pulsing, no continuous animation) -- the
+      earlier breathing pulse, then the rotating gradient, were both
+      removed for this; see docs/DECISIONS.md for the history.
 """
 
 from __future__ import annotations
@@ -72,12 +76,10 @@ BLUR_RADIUS_PX = 38  # was 90; cut down alongside SEED_BAND_PX
 PEAK_ALPHA = 235
 
 # --- Multicolor gradient: a QConicalGradient centered on the screen whose
-# stops orbit the current state's base hue, continuously rotating so the
-# border reads as alive/flowing rather than a flat static tint.
+# stops orbit the current state's base hue. Frozen at angle 0 (see the
+# module docstring): one cached render per state, no continuous motion.
 GRADIENT_STOPS = 13  # more stops = smoother hue interpolation
 GRADIENT_HUE_SPREAD_DEG = 45  # how far stops swing from the anchor hue
-ROTATION_PERIOD_S = 9.0  # seconds for one full 360-degree rotation
-GRADIENT_FPS = 30
 GRADIENT_SAT = 235
 GRADIENT_VAL = 245
 
@@ -114,10 +116,10 @@ MIN_BOX_SIZE_PX = 40
 # Milestone 7, Part B.4: how long the cursor must stay inside the target
 # box before it's treated as "already seen it" and dismissed early. The
 # original plan (docs/TODO.md) was to match this to the ambient glow's
-# breathing-pulse period, but that mechanism no longer exists -- it was
-# replaced by the rotating multicolor gradient (see this module's
-# docstring) before B.4 was implemented. Picked as a standalone fixed
-# value instead; not yet tuned against real usage.
+# breathing-pulse period, but continuous glow animation no longer exists
+# at all (breathing, then a rotating gradient, both removed -- see this
+# module's docstring). Picked as a standalone fixed value instead; not
+# yet tuned against real usage.
 DWELL_DISMISS_MS = 4000
 
 # How often the cursor position is polled against the box's rect while a
@@ -201,10 +203,10 @@ def _build_blurred_mask(canvas_width: int, canvas_height: int) -> QImage:
 
 
 def _tint_gradient(mask: QImage, anchor_hue_deg: float, rotation_deg: float, alpha: int) -> QImage:
-    """Recolor a blurred white mask with a rotating multicolor
-    `QConicalGradient` centered on the mask, keeping the mask's own alpha
-    shape (`CompositionMode_SourceIn`). Cheap relative to
-    `_build_blurred_mask` -- this is the only per-frame work.
+    """Recolor a blurred white mask with a multicolor `QConicalGradient`
+    centered on the mask, keeping the mask's own alpha shape
+    (`CompositionMode_SourceIn`). Cheap relative to `_build_blurred_mask`
+    -- and only re-run when the cached state's hue or size changes.
     """
     tinted = QImage(mask)
     painter = QPainter(tinted)
@@ -238,28 +240,19 @@ class _AuraOverlayWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self._anchor_hue = 0.0  # current state's base hue, 0-360 (animated on state change)
-        self._rotation = 0.0  # current gradient rotation angle, degrees
         self._mask: QImage | None = None  # cached blurred shape, rebuilt on resize
         self._mask_cache_key: tuple[int, int] | None = None
-
-        self._anim_timer = QTimer(self)
-        self._anim_timer.setInterval(int(1000 / GRADIENT_FPS))
-        self._anim_timer.timeout.connect(self._tick)
-        self._anim_start = time.monotonic()
-        self._anim_timer.start()
-
-    def _tick(self) -> None:
-        elapsed = time.monotonic() - self._anim_start
-        phase = (elapsed % ROTATION_PERIOD_S) / ROTATION_PERIOD_S
-        self._rotation = phase * 360.0
-        self.update()
+        # Finished per-state render, keyed by (width, height, hue). Rebuilt
+        # only when the size or hue actually changes -- there is deliberately
+        # no animation timer on this widget anymore (see the module
+        # docstring): repaints happen while GlowAuraRenderer's transition
+        # animation drives set_anchor_hue(), and idle does zero repaint work.
+        self._pixmap: QPixmap | None = None
+        self._pixmap_key: tuple[int, int, float] | None = None
 
     def set_anchor_hue(self, hue_deg: float) -> None:
         self._anchor_hue = hue_deg % 360.0
         self.update()
-
-    def stop(self) -> None:
-        self._anim_timer.stop()
 
     def _ensure_mask(self) -> QImage | None:
         w, h = self.width(), self.height()
@@ -278,16 +271,28 @@ class _AuraOverlayWidget(QWidget):
         self._mask_cache_key = None
         super().resizeEvent(event)
 
-    def paintEvent(self, event) -> None:
+    def _tinted_pixmap(self) -> QPixmap | None:
+        """The current state's finished glow render, from cache unless the
+        size or hue changed since it was built."""
         mask = self._ensure_mask()
         if mask is None:
+            return None
+        # Hue rounded: the transition animation's float steps rebuild as
+        # they should, while float noise can never defeat the idle cache.
+        key = (self.width(), self.height(), round(self._anchor_hue, 1))
+        if self._pixmap is None or self._pixmap_key != key:
+            tinted = _tint_gradient(mask, self._anchor_hue, 0.0, PEAK_ALPHA)
+            self._pixmap = QPixmap.fromImage(tinted)
+            self._pixmap_key = key
+        return self._pixmap
+
+    def paintEvent(self, event) -> None:
+        pixmap = self._tinted_pixmap()
+        if pixmap is None:
             return
 
-        tinted = _tint_gradient(mask, self._anchor_hue, self._rotation, PEAK_ALPHA)
-
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.drawImage(0, 0, tinted)
+        painter.drawPixmap(0, 0, pixmap)
         painter.end()
 
 
@@ -545,6 +550,5 @@ class GlowAuraRenderer(AuraRenderer):
             self._target_box_widget.close()
             self._target_box_widget = None
         if self._widget is not None:
-            self._widget.stop()
             self._widget.close()
             self._widget = None
