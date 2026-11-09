@@ -20,11 +20,26 @@ activation wiring in Part B.
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 
-from PySide6.QtGui import QShortcut, QKeySequence
-from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtWidgets import QApplication, QWidget
 
 from app.dynamic_island import DynamicIslandWidget
+
+
+def wire_preview_shortcuts(
+    widget: QWidget, on_toggle: Callable[[], None], on_quit: Callable[[], None]
+) -> None:
+    """Space toggles the island, Esc quits. Split out from main() so the
+    wiring is covered by tests/test_preview_shortcuts.py. Uses the
+    documented `.activated.connect()` form rather than an `activated=`
+    constructor kwarg, which PySide6's typed signatures don't declare.
+    """
+    toggle_shortcut = QShortcut(QKeySequence("Space"), widget)
+    toggle_shortcut.activated.connect(on_toggle)
+    quit_shortcut = QShortcut(QKeySequence("Escape"), widget)
+    quit_shortcut.activated.connect(on_quit)
 
 
 def main() -> None:
@@ -38,8 +53,7 @@ def main() -> None:
     island.raise_()
     island.activateWindow()
 
-    QShortcut(QKeySequence("Space"), island, activated=island.toggle)
-    QShortcut(QKeySequence("Escape"), island, activated=app.quit)
+    wire_preview_shortcuts(island, island.toggle, app.quit)
 
     print("Dynamic Island preview running. Space = toggle, Esc = quit.")
     sys.exit(app.exec())

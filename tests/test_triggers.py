@@ -4,8 +4,8 @@ LLM yes/no fallback (`llm/screen_intent.py`). No model: a fake stands in.
 
 from __future__ import annotations
 
-from vision.triggers import decide_screen_context, keyword_match
 from llm.screen_intent import SCREEN_INTENT_INSTRUCTIONS, needs_screen
+from vision.triggers import decide_screen_context, keyword_match
 
 KEYWORDS = ["screen", "see", "look", "this", "here"]
 
@@ -86,14 +86,24 @@ def test_blank_keywords_are_ignored() -> None:
 
 def test_empty_keywords_means_always_on_and_skips_classifier() -> None:
     calls: list[str] = []
-    decision = decide_screen_context("hi", [], lambda q: calls.append(q) or False)
+
+    def classifier(q: str) -> bool:
+        calls.append(q)
+        return False
+
+    decision = decide_screen_context("hi", [], classifier)
     assert decision.use_screen is True
     assert calls == []
 
 
 def test_keyword_match_never_calls_the_classifier() -> None:
     calls: list[str] = []
-    decision = decide_screen_context("what is this", KEYWORDS, lambda q: calls.append(q) or False)
+
+    def classifier(q: str) -> bool:
+        calls.append(q)
+        return False
+
+    decision = decide_screen_context("what is this", KEYWORDS, classifier)
     assert decision.use_screen is True
     assert decision.reason == "keyword match"
     assert calls == []
@@ -153,4 +163,3 @@ def test_needs_screen_accepts_alternative_instructions() -> None:
     engine = FakeClassifier(answer=True)
     assert needs_screen(engine, "is my photo too dark?", instructions="custom prompt") is True
     assert engine.calls == [("custom prompt", "is my photo too dark?")]
-
