@@ -49,8 +49,10 @@ import subprocess
 import sys
 import wave
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import sounddevice as sd
 from piper import PiperVoice, SynthesisConfig
 
@@ -190,6 +192,10 @@ class TTSEngine:
             [sys.executable, "-m", "piper.download_voices", voice, "--data-dir", str(data_dir)],
             capture_output=True,
             text=True,
+            # Explicitly False (the default): a failed download is reported
+            # via result.returncode below with a tailored message, not via
+            # CalledProcessError.
+            check=False,
         )
         if result.returncode != 0:
             raise RuntimeError(
@@ -242,7 +248,11 @@ class TTSEngine:
             n_channels = wav_file.getnchannels()
             frames = wav_file.readframes(wav_file.getnframes())
 
-        samples = np.frombuffer(frames, dtype=np.int16)
+        # Shape-agnostic on purpose: mono stays a 1-D int16 array while
+        # stereo is reshaped to (frames, channels) below, and `sd.play`
+        # accepts both. A fixed-shape annotation would be a lie for one
+        # of the two paths.
+        samples: npt.NDArray[Any] = np.frombuffer(frames, dtype=np.int16)
         if n_channels > 1:
             samples = samples.reshape(-1, n_channels)
 

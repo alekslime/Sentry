@@ -21,6 +21,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# `piper`/`sounddevice` are faked per-test below, but `tts.engine` also
+# imports numpy at module level -- skip the file where even that is
+# missing (no tts extra installed).
+pytest.importorskip("numpy", reason="tts extra (numpy, via piper-tts) not installed")
+
 
 @pytest.fixture(autouse=True)
 def fake_piper_and_sounddevice(monkeypatch):
@@ -80,27 +85,34 @@ def test_mismatched_local_args_raise() -> None:
 def test_download_cli_success_but_missing_files_raises_clear_runtime_error(tmp_path) -> None:
     engine_module = _import_engine()
 
-    with patch.object(
-        engine_module.subprocess, "run", return_value=MagicMock(returncode=0, stderr="")
+    with (
+        patch.object(
+            engine_module.subprocess, "run", return_value=MagicMock(returncode=0, stderr="")
+        ),
+        pytest.raises(RuntimeError, match="output layout may not match"),
     ):
-        with pytest.raises(RuntimeError, match="output layout may not match"):
-            engine_module.TTSEngine(voice="en_US-lessac-medium", data_dir=tmp_path)
+        engine_module.TTSEngine(voice="en_US-lessac-medium", data_dir=tmp_path)
 
 
 def test_download_cli_nonzero_exit_raises_clear_error(tmp_path) -> None:
     engine_module = _import_engine()
 
-    with patch.object(
-        engine_module.subprocess, "run", return_value=MagicMock(returncode=1, stderr="boom")
+    with (
+        patch.object(
+            engine_module.subprocess, "run", return_value=MagicMock(returncode=1, stderr="boom")
+        ),
+        pytest.raises(RuntimeError, match="Could not load Piper voice"),
     ):
-        with pytest.raises(RuntimeError, match="Could not load Piper voice"):
-            engine_module.TTSEngine(voice="nope", data_dir=tmp_path)
+        engine_module.TTSEngine(voice="nope", data_dir=tmp_path)
 
 
 def test_download_cli_invoked_with_expected_args_then_loads(tmp_path) -> None:
     engine_module = _import_engine()
 
-    def fake_run(cmd, capture_output, text):
+    def fake_run(cmd, capture_output, text, check):
+        # check=False is the contract: a failed download surfaces via
+        # returncode (with a tailored message), not CalledProcessError.
+        assert check is False
         (tmp_path / "en_US-lessac-medium.onnx").write_bytes(b"")
         (tmp_path / "en_US-lessac-medium.onnx.json").write_text("{}")
         return MagicMock(returncode=0, stderr="")
@@ -288,9 +300,7 @@ def test_strip_markdown_leaves_plain_text_unchanged() -> None:
     assert engine_module.strip_markdown_for_tts(plain) == plain
 
 
-def test_speak_strips_markdown_before_synthesizing(
-    fake_piper_and_sounddevice, tmp_path
-) -> None:
+def test_speak_strips_markdown_before_synthesizing(fake_piper_and_sounddevice, tmp_path) -> None:
     """`speak()` should hand Piper the sanitized text, not the raw
     markdown -- this is what actually keeps Piper from reading
     "asterisk" and code fences aloud, not just the standalone stripper
