@@ -55,11 +55,16 @@ logger = logging.getLogger(__name__)
 # sounddevice, faster-whisper) — see pyproject.toml and docs/DECISIONS.md.
 # Import it defensively so Sentry still launches with just the core
 # dependencies installed; voice activation is simply unavailable in that case.
+# OSError is caught alongside ImportError: a missing *system* library (e.g.
+# PortAudio for sounddevice, CUDA DLLs for faster-whisper) fails the import
+# with OSError from inside the package, and that must degrade exactly like
+# a missing pip package rather than killing the whole app (same for the
+# other guards below).
 try:
     from voice.service import VoiceActivationService
 
     _VOICE_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     VoiceActivationService = None  # type: ignore[assignment,misc]
     _VOICE_AVAILABLE = False
 
@@ -71,7 +76,7 @@ try:
     from llm.engine import LLMEngine
 
     _LLM_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     LLMEngine = None  # type: ignore[assignment,misc]
     _LLM_AVAILABLE = False
 
@@ -92,7 +97,7 @@ try:
     from PIL import Image
 
     _PIL_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     Image = None  # type: ignore[assignment]
     _PIL_AVAILABLE = False
 
@@ -102,7 +107,7 @@ try:
     from vision.ocr import OCRReader
 
     _VISION_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     ScreenCapture = None  # type: ignore[assignment,misc]
     VisionModel = None  # type: ignore[assignment,misc]
     OCRReader = None  # type: ignore[assignment,misc]
@@ -116,7 +121,7 @@ try:
     from tts.engine import TTSEngine
 
     _TTS_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     TTSEngine = None  # type: ignore[assignment,misc]
     _TTS_AVAILABLE = False
 
