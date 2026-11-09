@@ -21,6 +21,7 @@ import numpy as np
 
 from speech.transcriber import (
     Transcriber,
+    _effective_compute_type,
     _looks_like_cuda_runtime_failure,
     int16_to_float32,
 )
@@ -119,3 +120,60 @@ def test_int16_to_float32_normalizes_range() -> None:
     assert result.dtype == np.float32
     assert result.min() >= -1.0
     assert result.max() <= 1.0
+
+
+@pytest.mark.parametrize(
+    ("device", "compute_type", "expected"),
+    [
+        # Explicit CPU with the default compute type gets int8: float32 on
+        # CPU is ~10x realtime (measured 39s for a 3.5s clip vs 3s int8).
+        ("cpu", "default", "int8"),
+        # Anything explicitly configured is respected verbatim, everywhere.
+        ("cpu", "float32", "float32"),
+        ("cpu", "int8", "int8"),
+        ("auto", "default", "default"),
+        ("auto", "float16", "float16"),
+        ("cuda", "default", "default"),
+    ],
+)
+def test_effective_compute_type_selection(device: str, compute_type: str, expected: str) -> None:
+    assert _effective_compute_type(device, compute_type) == expected
+
+
+def test_init_forces_int8_on_cpu_with_default_and_warns(caplog: pytest.LogCaptureFixture) -> None:
+    with (
+        patch("speech.transcriber.WhisperModel") as ctor,
+        caplog.at_level("WARNING", logger="speech.transcriber"),
+    ):
+        Transcriber(model_size="small", device="cpu", compute_type="default")
+
+    ctor.assert_called_once_with("small", device="cpu", compute_type="int8")
+    assert "compute_type='int8'" in caplog.text
+
+
+def test_init_respects_explicit_compute_type_on_cpu(caplog: pytest.LogCaptureFixture) -> None:
+    with (
+        patch("speech.transcriber.WhisperModel") as ctor,
+        caplog.at_level("WARNING", logger="speech.transcriber"),
+    ):
+        Transcriber(model_size="small", device="cpu", compute_type="float32")
+
+    ctor.assert_called_once_with("small", device="cpu", compute_type="float32")
+    assert "compute_type='int8'" not in caplog.text
+
+
+def test_cpu_fallback_keeps_explicit_compute_type() -> None:
+    t = _make_transcriber()
+    t._compute_type = "float32"
+
+    broken = MagicMock()
+    broken.transcribe.side_effect = RuntimeError("cudaErrorInvalidDevice: invalid device")
+    t._model = broken
+    cpu_model = MagicMock()
+    cpu_model.transcribe.return_value = _fake_segments("hello")
+
+    with patch("speech.transcriber.WhisperModel", return_value=cpu_model) as ctor:
+        assert t.transcribe(np.zeros(16_000, dtype=np.int16)) == "hello"
+
+    ctor.assert_called_once_with("small", device="cpu", compute_type="float32")
+    assert t._fell_back_to_cpu is True

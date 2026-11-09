@@ -30,7 +30,12 @@ voice:
 
 speech:
   model_size: small
+  # auto = CUDA when it works, else one automatic fallback to CPU (with a warning).
+  # cpu skips the GPU attempt entirely.
   device: auto
+  # default = int8 on CPU (forced: float32 is ~10x slower there), faster-whisper's
+  # own default on CUDA. Any explicit value is respected verbatim, including on
+  # the CUDA-failure fallback path.
   compute_type: default
   language: en  # null = auto-detect language per utterance
   silence_rms_threshold: 300.0

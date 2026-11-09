@@ -41,6 +41,20 @@ def _looks_like_cuda_runtime_failure(exc: Exception) -> bool:
     return any(marker in message for marker in _CUDA_RUNTIME_ERROR_MARKERS)
 
 
+def _effective_compute_type(device: str, compute_type: str) -> str:
+    """Resolve the compute type to actually pass to `WhisperModel`.
+
+        ctranslate2's float32 CPU kernels are pathologically slow on ordinary
+    hardware (~10x realtime measured 2026-11-09: 39s for a 3.5s clip vs 3s
+    with int8), so an explicit CPU device with the default compute type gets
+    int8. Any explicitly configured value (anything but "default") is always
+    respected verbatim -- including on the CUDA-failure fallback path.
+    """
+    if device == "cpu" and compute_type == DEFAULT_COMPUTE_TYPE:
+        return "int8"
+    return compute_type
+
+
 def int16_to_float32(audio: np.ndarray) -> np.ndarray:
     """Convert int16 PCM audio (as produced by MicrophoneStream) to the
     normalized float32 format Faster-Whisper expects.
@@ -71,15 +85,23 @@ class Transcriber:
         self._compute_type = compute_type
         self._fell_back_to_cpu = False
 
+        effective_compute_type = _effective_compute_type(device, compute_type)
+        if effective_compute_type != compute_type:
+            logger.warning(
+                "speech.device='cpu' with default compute_type: using compute_type='int8' "
+                "(float32 on CPU is ~10x slower; set speech.compute_type explicitly to override)."
+            )
         logger.info(
             "Loading Faster-Whisper model '%s' (device=%s, compute_type=%s) — "
             "first run downloads weights from Hugging Face Hub, cached after that...",
             model_size,
             device,
-            compute_type,
+            effective_compute_type,
         )
         try:
-            self._model = WhisperModel(model_size, device=device, compute_type=compute_type)
+            self._model = WhisperModel(
+                model_size, device=device, compute_type=effective_compute_type
+            )
         except Exception as exc:
             raise RuntimeError(
                 f"Could not load Faster-Whisper model '{model_size}'. This requires an "
@@ -90,13 +112,19 @@ class Transcriber:
         logger.info("Faster-Whisper model '%s' ready.", model_size)
 
     def _reload_on_cpu(self) -> None:
+        compute_type = _effective_compute_type("cpu", self._compute_type)
+        compute_note = (
+            f"compute_type='{compute_type}'"
+            if compute_type != self._compute_type
+            else f"keeping explicitly configured compute_type='{compute_type}'"
+        )
         logger.warning(
             "Faster-Whisper's CUDA path failed at runtime (GPU detected but its CUDA "
             "libraries aren't loadable — driver/runtime mismatch or missing redistributables). "
-            "Falling back to CPU for the rest of this session. Transcription will be slower "
-            "but should stop failing."
+            f"Falling back to CPU for the rest of this session ({compute_note}). "
+            "Transcription will be slower but should stop failing."
         )
-        self._model = WhisperModel(self._model_size, device="cpu", compute_type="int8")
+        self._model = WhisperModel(self._model_size, device="cpu", compute_type=compute_type)
         self._fell_back_to_cpu = True
         logger.info("Faster-Whisper model '%s' reloaded on CPU.", self._model_size)
 
