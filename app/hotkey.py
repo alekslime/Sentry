@@ -148,9 +148,15 @@ class GlobalHotkeyFilter(QObject, QAbstractNativeEventFilter):
         # https://github.com/enthought/pywin32-ctypes/issues/122. Kept as
         # an instance attribute (rather than a fresh ctypes.windll.user32
         # lookup) so unregister() below queries the same handle.
-        self._user32 = ctypes.WinDLL("user32", use_last_error=True)
+        # getattr, not direct attribute access: typeshed only defines
+        # WinDLL/get_last_error on Windows, and mypy checks this file on
+        # Linux CI too (B009 is wrong here -- this isn't about safety,
+        # it's about static-analysis portability across platforms).
+        # Unreachable off-Windows anyway (the _IS_WINDOWS guard above
+        # already returned), so no default -- fail loud.
+        self._user32 = getattr(ctypes, "WinDLL")("user32", use_last_error=True)  # noqa: B009
         if not self._user32.RegisterHotKey(None, self._hotkey_id, self._modifiers, self._vk):
-            error_code = ctypes.get_last_error()
+            error_code = getattr(ctypes, "get_last_error")()  # noqa: B009
             logger.warning(
                 "RegisterHotKey failed (id=%d, modifiers=0x%x, vk=0x%x, "
                 "Win32 error=%d) — likely already bound by another "
