@@ -48,6 +48,7 @@ dev = [
     "black>=24.4.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
+    "types-PyYAML>=6.0.12",  # stubs for PyYAML (a core dependency); mypy needs these to check config/*
 ]
 
 [project.scripts]
@@ -73,3 +74,19 @@ target-version = "py312"
 python_version = "3.12"
 warn_unused_ignores = true
 disallow_untyped_defs = false
+
+# These third-party packages ship neither inline types (py.typed) nor
+# separate stub packages, and typeshed has no stubs for them either, so
+# mypy cannot analyze their imports at all. `ignore_missing_imports` is
+# mypy's documented remedy for exactly this case (not a silencing of a
+# checkable error): calls into these modules become `Any` and everything
+# else is still checked. Revisit if any of them ever gains types.
+[[tool.mypy.overrides]]
+module = [
+    "openwakeword",
+    "openwakeword.*",
+    "sounddevice",
+    "faster_whisper",
+    "pytesseract",
+]
+ignore_missing_imports = true
