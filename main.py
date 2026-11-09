@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TypedDict
 
@@ -218,15 +219,20 @@ def _caption_and_ocr(
     The two are independent -- captioning reads `vision_image` (downscaled
     for the model) while OCR deliberately reads `image` (the original
     full-resolution capture; downscaling before Tesseract would degrade
-    verbatim text reading -- see `_resize_for_vision`'s docstring). Either
-    side may be `None` (subsystem unavailable) or raise (model/OCR
+    verbatim text reading -- see `_resize_for_vision`'s docstring) -- so
+    they run concurrently in a two-thread pool. Captioning is llama.cpp-
+    bound and OCR is a Tesseract subprocess; neither holds the GIL while
+    working, so a query pays max(describe, OCR) instead of the sum.
+    Either side may be `None` (subsystem unavailable) or raise (model/OCR
     failure); both cases yield `""` for that side while the other still
     runs.
     """
-    caption = ""
-    if vision_model is not None:
+
+    def run_caption() -> str:
+        if vision_model is None:
+            return ""
         try:
-            caption = vision_model.describe(
+            return vision_model.describe(
                 vision_image,
                 prompt=caption_prompt,
                 max_tokens=max_tokens,
@@ -234,15 +240,23 @@ def _caption_and_ocr(
             )
         except Exception:
             logger.exception("Screen captioning failed — continuing without scene description.")
+            return ""
 
-    ocr_text = ""
-    if ocr_reader is not None:
+    def run_ocr() -> str:
+        if ocr_reader is None:
+            return ""
         try:
-            ocr_text = ocr_reader.read(image)
+            return ocr_reader.read(image)
         except Exception:
             logger.exception("OCR failed — continuing without verbatim on-screen text.")
+            return ""
 
-    return caption, ocr_text
+    # Both submitted before either is awaited -- that is what makes this
+    # concurrent rather than just threaded-looking.
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="sentry-vision") as pool:
+        caption_future = pool.submit(run_caption)
+        ocr_future = pool.submit(run_ocr)
+        return caption_future.result(), ocr_future.result()
 
 
 class _TurnState(TypedDict):

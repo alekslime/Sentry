@@ -8,6 +8,7 @@ not here.
 
 from __future__ import annotations
 
+import threading
 from unittest.mock import MagicMock
 
 from PIL import Image
@@ -62,3 +63,59 @@ def test_failing_side_yields_empty_string_for_that_side() -> None:
     ocr_reader = MagicMock()
     ocr_reader.read.side_effect = RuntimeError("tesseract blew up")
     assert _call(ocr_reader=ocr_reader)[0] == ("a code editor", "")
+
+
+def test_sides_run_concurrently() -> None:
+    # describe() blocks until OCR has started: against a sequential
+    # implementation this times out (OCR runs only after describe
+    # returns), failing the test instead of hanging it.
+    ocr_started = threading.Event()
+    vision_image, full_image = _images()
+
+    def describe(*args, **kwargs) -> str:
+        assert ocr_started.wait(timeout=10)
+        return "cap"
+
+    def read(image) -> str:
+        ocr_started.set()
+        return "ocr"
+
+    vision_model = MagicMock()
+    vision_model.describe.side_effect = describe
+    ocr_reader = MagicMock()
+    ocr_reader.read.side_effect = read
+
+    assert _caption_and_ocr(vision_model, ocr_reader, vision_image, full_image, "p", 100, 1.3) == (
+        "cap",
+        "ocr",
+    )
+
+
+def test_concurrent_side_failure_still_returns_the_other_side() -> None:
+    release = threading.Event()
+    vision_image, full_image = _images()
+    failures: list[str] = []
+
+    def describe(*args, **kwargs) -> str:
+        # Must observe OCR running first ("runtime"); a sequential
+        # implementation times out here instead ("timeout").
+        if release.wait(timeout=10):
+            failures.append("runtime")
+        else:
+            failures.append("timeout")
+        raise RuntimeError("model blew up mid-flight")
+
+    def read(image) -> str:
+        release.set()
+        return "ocr"
+
+    vision_model = MagicMock()
+    vision_model.describe.side_effect = describe
+    ocr_reader = MagicMock()
+    ocr_reader.read.side_effect = read
+
+    assert _caption_and_ocr(vision_model, ocr_reader, vision_image, full_image, "p", 100, 1.3) == (
+        "",
+        "ocr",
+    )
+    assert failures == ["runtime"]
