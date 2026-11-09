@@ -10,9 +10,20 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+pytest.importorskip("numpy", reason="speech extra (via faster-whisper) not installed")
+pytest.importorskip("faster_whisper", reason="speech extra (faster-whisper) not installed")
+
+# These imports follow the importorskip guards -- the speech extra is
+# optional and Sentry degrades without it.
 import numpy as np
 
-from speech.transcriber import Transcriber, _looks_like_cuda_runtime_failure, int16_to_float32
+from speech.transcriber import (
+    Transcriber,
+    _looks_like_cuda_runtime_failure,
+    int16_to_float32,
+)
 
 
 def _make_transcriber() -> Transcriber:
