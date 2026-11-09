@@ -65,6 +65,12 @@ shares are from isolated residency tests):
 
 ## Recent changes (this session)
 
+- **Sentence-chunked TTS** (`tts/engine.py` `split_sentences` +
+  per-sentence synth/play loop in `speak()`). Real Piper voice on the
+  dev laptop, 271-char paragraph: time-to-first-audio 1.16s -> 0.25s
+  (4.7x). Cancellation semantics unchanged (idle `stop()` still never
+  arms; `stop()` also aborts between sentences) -- pinned by 4 new
+  tests in `tests/test_tts_engine.py`.
 - **OCR-box pointing replaces dead VLM locate** (`vision/text_locate.py`,
   `vision/ocr.py` `read_with_boxes` + one-pass cache, `main.py` rewired).
   `/tmp/eval_text_locate.py` on 20 rendered scenes with known word truth:

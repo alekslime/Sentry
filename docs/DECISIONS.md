@@ -1725,3 +1725,24 @@ by design (return None rather than guess).
 with `read()` through a last-image cache, so pointing adds no extra OCR
 when captioning/OCR runs on the same capture anyway.
 
+
+## 2026-11-09 - Sentence-chunked TTS: audio starts after the first sentence
+
+**Decision:** `TTSEngine.speak()` splits the reply into sentences and
+synthesizes/plays each in turn instead of synthesizing the whole reply
+up front. Same voice and config per chunk (no timbre change); the gap
+between chunks is one output-device restart. Cancellation semantics are
+unchanged: `stop()` aborts between sentences as well as mid-synthesis
+and mid-playback, and an idle `stop()` still never cancels a later
+utterance (all pinned by `tests/test_tts_engine.py`).
+
+**Evidence:** real Piper voice (`en_US-lessac-medium`, CPU) on the dev
+laptop, 271-char 4-sentence paragraph: whole-text synthesis 1.16s
+(old time-to-first-audio) vs first-sentence synthesis 0.25s (new) --
+4.7x faster to audible speech. Chunked audio totals ~670KB vs ~660KB
+whole (per-chunk WAV headers + boundary prosody), i.e. no meaningful
+size cost. Splitter is a deliberately naive regex (`_SENTENCE_SPLIT`):
+it over-splits abbreviations ("Mr. Smith" pauses mid-name) but never
+under-splits, and decimals ("3.14") are safe -- the wrong trade for a
+parser, the right trade for speech.
+

@@ -102,12 +102,32 @@ def strip_markdown_for_tts(text: str) -> str:
     return text.strip()
 
 
+# Split after `.`/`!`/`?` followed by whitespace and an (optionally
+# quoted/parenthesized) uppercase letter or digit -- the digit covers
+# sentences that start with a number ("42 is the answer"). Deliberately
+# naive: no abbreviation handling, so "Mr. Smith" becomes two chunks with
+# a tiny pause between them. Harmless for speech, and far better than the
+# alternative failure mode (never splitting). Decimals like "3.14" are
+# safe: with no whitespace after the period, the pattern can't match.
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[\"'(\[]?[A-Z0-9])")
+
+
+def split_sentences(text: str) -> list[str]:
+    """Split `text` into sentences for chunked synthesis (see `speak()`).
+
+    Returns `[text]` unchanged when no boundary is found, and `[]` for
+    blank input -- so single-sentence callers behave exactly as before.
+    """
+    chunks = (part.strip() for part in _SENTENCE_SPLIT.split(text.strip()))
+    return [chunk for chunk in chunks if chunk]
+
+
 class TTSEngine:
-    """Wraps a Piper `PiperVoice` for one-shot text -> speech playback.
+    """Wraps a Piper `PiperVoice` for text -> speech playback.
 
     Stateless across calls, same as `LLMEngine.generate()` -- each
-    `speak()` call is an independent synthesis, no streaming/incremental
-    text yet.
+    `speak()` call is an independent utterance, synthesized and played
+    one sentence at a time (see `speak()`).
     """
 
     def __init__(
@@ -239,6 +259,15 @@ class TTSEngine:
         including during synthesis, in which case the synthesized audio
         is discarded and nothing plays).
 
+        Sentence-chunked: the text is split on sentence boundaries and
+        each sentence is synthesized and played in turn, so audio starts
+        after the first sentence instead of after the whole response
+        (synthesis is the slow part -- multi-second on CPU for a long
+        reply). A single sentence behaves exactly as before. The gap
+        between sentences is one output-device restart each -- barely a
+        pause, and the same voice/config renders every chunk, so timbre
+        does not change mid-utterance.
+
         Empty/whitespace-only input is a silent no-op, same convention as
         `LLMEngine.generate()`.
 
@@ -258,43 +287,56 @@ class TTSEngine:
             self._speak_active = True
             self._stop_requested = False
         try:
-            wav_bytes = self.synthesize_wav_bytes(speech_text)
-            with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
-                sample_rate = wav_file.getframerate()
-                n_channels = wav_file.getnchannels()
-                frames = wav_file.readframes(wav_file.getnframes())
-
-            # Shape-agnostic on purpose: mono stays a 1-D int16 array while
-            # stereo is reshaped to (frames, channels) below, and `sd.play`
-            # accepts both. A fixed-shape annotation would be a lie for one
-            # of the two paths.
-            samples: npt.NDArray[Any] = np.frombuffer(frames, dtype=np.int16)
-            if n_channels > 1:
-                samples = samples.reshape(-1, n_channels)
-
-            with self._state_lock:
-                cancelled = self._stop_requested
-            if cancelled:
-                logger.debug("speak() cancelled during synthesis; skipping playback.")
-                return
-
-            logger.debug(
-                "Playing %d samples at %dHz (%d chars of text).",
-                len(samples),
-                sample_rate,
-                len(text),
-            )
-            with self._state_lock:
-                self._speaking = True
-            try:
-                sd.play(samples, samplerate=sample_rate)
-                sd.wait()  # blocks until playback finishes or sd.stop() is called
-            finally:
+            for sentence in split_sentences(speech_text):
                 with self._state_lock:
-                    self._speaking = False
+                    cancelled = self._stop_requested
+                if cancelled:
+                    logger.debug("speak() cancelled; skipping remaining sentences.")
+                    return
+                wav_bytes = self.synthesize_wav_bytes(sentence)
+                with self._state_lock:
+                    cancelled = self._stop_requested
+                if cancelled:
+                    logger.debug("speak() cancelled during synthesis; skipping playback.")
+                    return
+                self._play_wav_bytes(wav_bytes, len(sentence))
         finally:
             with self._state_lock:
                 self._speak_active = False
+
+    def _play_wav_bytes(self, wav_bytes: bytes, text_len: int) -> None:
+        """Decode one synthesized sentence and play it, blocking.
+
+        Split out from `speak()` so the sentence loop stays readable --
+        this is the old whole-text playback path, unchanged.
+        """
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
+            sample_rate = wav_file.getframerate()
+            n_channels = wav_file.getnchannels()
+            frames = wav_file.readframes(wav_file.getnframes())
+
+        # Shape-agnostic on purpose: mono stays a 1-D int16 array while
+        # stereo is reshaped to (frames, channels) below, and `sd.play`
+        # accepts both. A fixed-shape annotation would be a lie for one
+        # of the two paths.
+        samples: npt.NDArray[Any] = np.frombuffer(frames, dtype=np.int16)
+        if n_channels > 1:
+            samples = samples.reshape(-1, n_channels)
+
+        logger.debug(
+            "Playing %d samples at %dHz (%d chars of text).",
+            len(samples),
+            sample_rate,
+            text_len,
+        )
+        with self._state_lock:
+            self._speaking = True
+        try:
+            sd.play(samples, samplerate=sample_rate)
+            sd.wait()  # blocks until playback finishes or sd.stop() is called
+        finally:
+            with self._state_lock:
+                self._speaking = False
 
     def stop(self) -> None:
         """Cancel an in-progress `speak()` immediately, if any: aborts

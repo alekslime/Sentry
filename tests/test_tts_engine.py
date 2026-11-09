@@ -362,3 +362,64 @@ def test_idle_stop_does_not_cancel_next_speak(fake_piper_and_sounddevice, tmp_pa
     engine.speak("hello there")
 
     assert fake_sd.play.called
+
+
+# --- split_sentences() + sentence-chunked speak() ---
+#
+# speak() synthesizes and plays one sentence at a time so audio starts
+# after the first sentence instead of after the whole response.
+
+
+def test_split_sentences_splits_on_terminal_punctuation() -> None:
+    engine_module = _import_engine()
+    split = engine_module.split_sentences
+
+    assert split("First sentence. Second one! Is this third? Yes.") == [
+        "First sentence.",
+        "Second one!",
+        "Is this third?",
+        "Yes.",
+    ]
+    assert split("No boundary here") == ["No boundary here"]
+    assert split("  Padded.  Spacing. ") == ["Padded.", "Spacing."]
+    assert split("") == []
+    assert split("Version 3.14 is out. Really.") == ["Version 3.14 is out.", "Really."]
+
+
+def test_speak_synthesizes_and_plays_each_sentence(fake_piper_and_sounddevice, tmp_path) -> None:
+    engine_module = _import_engine()
+    fake_piper, fake_sd = fake_piper_and_sounddevice
+    engine, fake_voice = _make_engine_with_fake_voice(engine_module, fake_piper, tmp_path)
+
+    engine.speak("First sentence. Second one!")
+
+    synthesized = [call[0][0] for call in fake_voice.synthesize_wav.call_args_list]
+    assert synthesized == ["First sentence.", "Second one!"]
+    assert fake_sd.play.call_count == 2
+    assert fake_sd.wait.call_count == 2
+
+
+def test_speak_single_sentence_synthesizes_once(fake_piper_and_sounddevice, tmp_path) -> None:
+    engine_module = _import_engine()
+    fake_piper, fake_sd = fake_piper_and_sounddevice
+    engine, fake_voice = _make_engine_with_fake_voice(engine_module, fake_piper, tmp_path)
+
+    engine.speak("hello there")
+
+    assert fake_voice.synthesize_wav.call_count == 1
+    assert fake_sd.play.call_count == 1
+
+
+def test_stop_between_sentences_aborts_the_rest(fake_piper_and_sounddevice, tmp_path) -> None:
+    engine_module = _import_engine()
+    fake_piper, fake_sd = fake_piper_and_sounddevice
+    engine, fake_voice = _make_engine_with_fake_voice(engine_module, fake_piper, tmp_path)
+
+    # Interrupt during the first sentence's playback: the second
+    # sentence must never be synthesized, let alone played.
+    fake_sd.play.side_effect = lambda *args, **kwargs: engine.stop()
+
+    engine.speak("First sentence. Second one!")
+
+    assert fake_voice.synthesize_wav.call_count == 1
+    assert fake_sd.play.call_count == 1
