@@ -23,6 +23,7 @@ from __future__ import annotations
 import sqlite3
 import time
 from pathlib import Path
+from typing import TypedDict
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS turns (
@@ -32,6 +33,15 @@ CREATE TABLE IF NOT EXISTS turns (
     response TEXT NOT NULL
 );
 """
+
+
+class StoredTurn(TypedDict):
+    """One row of the `turns` table, as returned by `get_recent_turns`."""
+
+    id: int
+    timestamp: float
+    query: str
+    response: str
 
 
 class ConversationStore:
@@ -65,9 +75,15 @@ class ConversationStore:
                 (ts, query, response),
             )
             conn.commit()
-            return int(cursor.lastrowid)
+            row_id = cursor.lastrowid
+            # Unreachable after a successful INSERT on a rowid table, but
+            # `lastrowid` is typed `int | None`, so say what a None would
+            # mean instead of feeding it to int().
+            if row_id is None:
+                raise RuntimeError("INSERT into turns returned no row id.")
+            return row_id
 
-    def get_recent_turns(self, limit: int = 20) -> list[dict[str, object]]:
+    def get_recent_turns(self, limit: int = 20) -> list[StoredTurn]:
         """Return up to `limit` most recent turns, newest first.
 
         For inspection/debugging only -- not used anywhere in the
@@ -79,7 +95,17 @@ class ConversationStore:
                 "SELECT id, timestamp, query, response FROM turns ORDER BY id DESC LIMIT ?",
                 (limit,),
             ).fetchall()
-            return [dict(row) for row in rows]
+            # Built field-by-field (not `dict(row)`) so the static type
+            # matches the _SCHEMA this module owns.
+            return [
+                StoredTurn(
+                    id=row["id"],
+                    timestamp=row["timestamp"],
+                    query=row["query"],
+                    response=row["response"],
+                )
+                for row in rows
+            ]
 
     def count_turns(self) -> int:
         with sqlite3.connect(self.db_path) as conn:

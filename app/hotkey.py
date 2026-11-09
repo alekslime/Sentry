@@ -120,7 +120,9 @@ class GlobalHotkeyFilter(QObject, QAbstractNativeEventFilter):
 
     activated = Signal()
 
-    def __init__(self, hotkey_id: int, modifiers: int, vk: int, parent: QObject | None = None) -> None:
+    def __init__(
+        self, hotkey_id: int, modifiers: int, vk: int, parent: QObject | None = None
+    ) -> None:
         QObject.__init__(self, parent)
         QAbstractNativeEventFilter.__init__(self)
         self._hotkey_id = hotkey_id
@@ -178,7 +180,7 @@ class GlobalHotkeyFilter(QObject, QAbstractNativeEventFilter):
         self.is_registered = False
         logger.debug("Global hotkey (id=%d) unregistered.", self._hotkey_id)
 
-    def nativeEventFilter(self, event_type, message):  # noqa: N802 (Qt naming convention)
+    def nativeEventFilter(self, event_type, message):
         # Only relevant on Windows, where Qt tags native messages
         # "windows_generic_MSG" and hands back a MSG* as an int address.
         if not self.is_registered:
@@ -187,7 +189,10 @@ class GlobalHotkeyFilter(QObject, QAbstractNativeEventFilter):
             from ctypes import wintypes
 
             msg = wintypes.MSG.from_address(int(message))
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
+            # `message` is an opaque pointer-sized value handed back by Qt;
+            # anything unparseable means "not a hotkey message we care
+            # about", never a reason to take down the event filter.
             return False, 0
 
         if msg.message == WM_HOTKEY and msg.wParam == self._hotkey_id:

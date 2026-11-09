@@ -25,6 +25,7 @@ import logging
 import sys
 import threading
 from pathlib import Path
+from typing import TypedDict
 
 from PySide6.QtWidgets import QApplication
 
@@ -92,7 +93,7 @@ try:
 
     _PIL_AVAILABLE = True
 except ImportError:
-    Image = None  # type: ignore[assignment,misc]
+    Image = None  # type: ignore[assignment]
     _PIL_AVAILABLE = False
 
 try:
@@ -198,6 +199,19 @@ def _resize_for_vision(image: Image.Image, max_dimension: int | None) -> Image.I
     return image.resize(new_size, Image.Resampling.LANCZOS)
 
 
+class _TurnState(TypedDict):
+    """Mutable per-turn bookkeeping shared by main()'s nested callbacks.
+
+    A TypedDict (still a plain dict at runtime) so each key keeps its own
+    static type instead of collapsing to one `TurnTimer | None | bool`
+    union for all three. See the `current_turn` comment in main().
+    """
+
+    timer: TurnTimer | None
+    speaking_turn: TurnTimer | None
+    active: bool
+
+
 def main() -> int:
     settings = get_settings()
     setup_logging(settings.logging)
@@ -251,8 +265,7 @@ def main() -> int:
             # why -- the island remains fully usable via the wake word.
         except ValueError:
             logger.exception(
-                "Could not parse island.hotkey=%r — skipping global hotkey "
-                "registration.",
+                "Could not parse island.hotkey=%r — skipping global hotkey " "registration.",
                 settings.island.hotkey,
             )
             hotkey_filter = None
@@ -304,7 +317,7 @@ def main() -> int:
     # retype and hit Enter again). Set True in on_wake_word_detected,
     # cleared at every one of this turn's terminal points (the same
     # points that already call island.collapse()).
-    current_turn: dict[str, TurnTimer | None | bool] = {
+    current_turn: _TurnState = {
         "timer": None,
         "speaking_turn": None,
         "active": False,
@@ -359,9 +372,7 @@ def main() -> int:
                 n_gpu_layers=settings.vision.n_gpu_layers,
             )
         except RuntimeError:
-            logger.exception(
-                "Could not load the vision model — continuing without screen context."
-            )
+            logger.exception("Could not load the vision model — continuing without screen context.")
             vision_model = None
 
         # OCR is independent of the scene-description model above -- a
@@ -425,12 +436,16 @@ def main() -> int:
     else:
         try:
             memory_db_path = (
-                Path(settings.memory.db_path) if settings.memory.db_path else DATA_DIR / "conversations.db"
+                Path(settings.memory.db_path)
+                if settings.memory.db_path
+                else DATA_DIR / "conversations.db"
             )
             conversation_store = ConversationStore(memory_db_path)
             logger.info("Conversation history: %s", memory_db_path)
         except RuntimeError:
-            logger.exception("Could not open the conversation database — continuing without history.")
+            logger.exception(
+                "Could not open the conversation database — continuing without history."
+            )
             conversation_store = None
 
     # Milestone 7, Part B.3: real on-screen offset of the monitor being
@@ -528,7 +543,7 @@ def main() -> int:
         # isn't already going to the screen anyway. See vision/triggers.py.
         classifier = None
         if settings.vision.intent_classifier and llm_engine is not None and not should_locate:
-            classifier = lambda question: needs_screen(llm_engine, question)  # noqa: E731
+            classifier = lambda question: needs_screen(llm_engine, question)
         decision = decide_screen_context(text, vision_keywords, classifier)
         should_caption_or_ocr = decision.use_screen
 
@@ -567,7 +582,10 @@ def main() -> int:
         # decision — both abort this query with a retry prompt rather
         # than silently falling back to a normal answer, since the user
         # specifically asked to be shown something.
-        if should_locate:
+        # `should_locate` already implies `vision_model is not None` (see
+        # its definition above); the second conjunct just says so to the
+        # type checker.
+        if should_locate and vision_model is not None:
             try:
                 location = vision_model.locate(
                     vision_image, text, repeat_penalty=settings.vision.repeat_penalty
@@ -679,12 +697,17 @@ def main() -> int:
             history: list[tuple[str, str]] = []
             if conversation_store is not None and settings.memory.context_turns > 0:
                 try:
-                    recent = conversation_store.get_recent_turns(limit=settings.memory.context_turns)
+                    recent = conversation_store.get_recent_turns(
+                        limit=settings.memory.context_turns
+                    )
                     history = [
-                        (past_turn["query"], past_turn["response"]) for past_turn in reversed(recent)
+                        (past_turn["query"], past_turn["response"])
+                        for past_turn in reversed(recent)
                     ]
                 except Exception:
-                    logger.exception("Failed to fetch conversation history — continuing without it.")
+                    logger.exception(
+                        "Failed to fetch conversation history — continuing without it."
+                    )
                     history = []
 
             if turn is not None:
@@ -782,7 +805,7 @@ def main() -> int:
         # on_tts_finished/on_tts_failed bring Aura back to IDLE once
         # playback ends — otherwise (no TTS this session) go straight to
         # IDLE, exactly as before this milestone.
-        logger.info('LLM response ready (%d chars)', len(text))
+        logger.info("LLM response ready (%d chars)", len(text))
         window.show_response(text)
         # Session 11: generation itself is done as soon as this callback
         # fires -- clear the reentrancy guard here regardless of whether
