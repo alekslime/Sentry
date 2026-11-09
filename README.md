@@ -76,11 +76,11 @@ Early, and built one milestone at a time. Here's the honest picture:
 | 4. Local LLM | Done |
 | 5. Screen capture + vision | Done |
 | 6. Aura glow overlay | Done |
-| 7. Visual guidance (the pointing box) | Code complete. Confirmed on real hardware once; the early-dismiss part hasn't been run on real hardware yet |
+| 7. Visual guidance (the pointing box) | Done. Points by matching your words against Tesseract OCR boxes (95% hit rate on rendered scenes); on by default, text targets only, misses are spoken aloud. The original VLM-coordinate approach measured IoU 0.000 and was replaced |
 | 8. Voice responses (TTS) | Done, confirmed on real hardware |
 | 9. Conversation memory | Done, confirmed on real hardware |
 | 10. Dynamic Island | Widget, hotkey and wake-word activation work. Settings inside the island and retiring the old window are still open |
-| 11. Realtime responsiveness | Latency timing is in. Streaming speech, barge-in that cancels generation, and audio-synced Aura are still open |
+| 11. Realtime responsiveness | Per-turn latency timing and sentence-chunked TTS (audio starts after the first sentence) are in. True streaming synthesis, barge-in that cancels generation, and audio-synced Aura are still open |
 
 Still on the list: a custom wake word (it listens for "Hey Jarvis" for now) and
 more real-hardware testing. Details are in [`docs/ROADMAP.md`](docs/ROADMAP.md),
@@ -134,8 +134,9 @@ Step by step:
    trigger word like "screen", "this" or "here", Sentry captures the screen and
    gets a scene description plus OCR text.
 5. **Locating (optional).** If your question contains a word like "where" or
-   "find", the vision model returns a box around the thing you asked about, and
-   Sentry flashes it on screen.
+   "find", Sentry matches your words against the Tesseract word boxes and
+   flashes the winning box on screen (text targets only). If nothing
+   matches, it says so out loud instead.
 6. **Answer.** The LLM gets your question, the screen context, and the last few
    saved turns of conversation.
 7. **Speech.** Piper reads the answer aloud and Aura goes cyan, then back to blue.
@@ -147,7 +148,8 @@ Step by step:
 | Wake word | OpenWakeWord |
 | Speech to text | Faster-Whisper |
 | Screen capture | MSS, OpenCV, Pillow |
-| Scene understanding and locating | MiniCPM-V-2.6 through llama.cpp |
+| Scene understanding | MiniCPM-V-2.6 through llama.cpp |
+| Pointing at on-screen text | Tesseract word boxes (`vision/text_locate.py`) |
 | Exact on-screen text | Tesseract OCR |
 | Answers | llama.cpp, any GGUF model |
 | Text to speech | Piper |
@@ -159,6 +161,9 @@ Step by step:
 Aura is a soft glow along the edge of your screen: a click-through, always-on-top
 overlay painted with Qt gradients. It cross-fades between colors when the state
 changes (about a third of a second) and then holds still. No pulsing, no neon.
+Each state's glow is rendered once into a cached image and the overlay does
+zero repaints at idle; on the dev laptop that took idle process CPU from
+~246% to ~10% (2-minute mean).
 
 | State | Color | Meaning |
 | --- | --- | --- |
@@ -266,6 +271,7 @@ which is heavily commented. The settings you're most likely to touch:
 | `vision.trigger_keywords` | `screen, see, look, this, here` | Vision only runs if your question contains one of these. `[]` means always. |
 | `vision.intent_classifier` | `false` | Experimental. If no keyword matched, ask the LLM one yes/no question ("does this need the screen?") before skipping vision. With the default 0.5B model it says yes to almost everything, so it is off. |
 | `vision.locate_trigger_keywords` | `where, find, point, show me, locate` | Same idea for the pointing box. |
+| `vision.enable_locate` | `true` | Point at matching on-screen text. Text targets only; misses are spoken aloud. |
 | `vision.max_image_dimension` | `512` | Downscale captures before the vision model sees them. Big speed win. |
 | `vision.ocr_enabled` | `true` | Also read exact on-screen text with Tesseract. |
 | `vision.tesseract_cmd` | `null` | Full path to Tesseract if it isn't on your `PATH`. |
@@ -311,7 +317,7 @@ A few things to try with vision on:
 
 - "What does this error mean?"
 - "What am I looking at on my screen?"
-- "Where do I click to export this?" (flashes a box around the target)
+- "Where do I click to export this?" (flashes a box around matching on-screen text)
 - "Read me the text in this dialog."
 
 Sentry handles one question at a time. If you ask a second one while the first
@@ -339,9 +345,11 @@ When it's on and your question triggers it:
 4. Both go into the prompt along with your question.
 5. The screenshot is discarded.
 
-For pointing questions, the vision model returns a box (as percentages of the
-screen), Sentry converts it to pixels, clamps it to the screen, and flashes an
-outline around it. The box clears when you ask your next question or when your
+For pointing questions, Sentry matches the words in your question against
+Tesseract's word boxes and flashes an outline around the best match. This
+only works for visible text -- icons and nameless shapes never match, and a
+miss is answered out loud ("I couldn't find anything...") instead of
+guessing. The box clears when you ask your next question or when your
 cursor stays inside it for about four seconds, and otherwise times out by itself.
 
 ## Where your data goes
@@ -404,16 +412,21 @@ Every turn logs a one-line timing summary at INFO level, like
 
 Things worth knowing:
 
-- **Vision is the slow part.** On the 3070 Ti, a screen-aware query took about
-  234 seconds at full resolution because the image-encoding step runs on the CPU
-  regardless of GPU settings (a known llama-cpp-python limitation).
-  Downscaling captures to 512 px brought that down to roughly 22 seconds, and
-  that's now the default. Questions that don't trigger vision are much faster.
+- **Vision is the slow part.** A screen-aware query takes about 24 seconds
+  on the 4 GB Quadro laptop: the image-encoding step runs on the CPU
+  regardless of GPU settings (a known llama-cpp-python limitation), so
+  downscaling captures to 512 px (now the default) is what keeps it usable.
+  Questions that don't trigger vision are much faster.
+- **More GPU layers can be slower on small VRAM.** On that same 4 GB card,
+  offloading 6 vision layers took 32s per query vs 24s with 0, and 20+
+layers took minutes (VRAM oversubscription). Vision runs on the CPU there;
+  only the 3B LLM lives on the GPU. See `HANDOFF.md` for the VRAM budget.
 - **GPU offload for the LLM.** `pip install llama-cpp-python` gets you a
   CPU-only build by default. If the LLM feels slow, check you have a
   CUDA-enabled build.
-- **Speech starts after the whole answer is written.** Streaming the first
-  sentence while the rest generates is on the roadmap.
+- **Speech starts after the first sentence.** Replies are synthesized and
+  played one sentence at a time: about 0.25s to first audio on a typical
+  4-sentence reply (was 1.16s synthesizing the whole thing first).
 
 ## Troubleshooting
 
@@ -453,14 +466,17 @@ plus real-hardware runs rather than committed UI tests.
 
 ### Measuring pointing accuracy
 
-`python eval_locate.py` checks whether `locate()` really finds what you ask
-for. It draws scenes with known box positions (colored shapes, labeled
-buttons), asks the real model to find each one, and scores the answers by
-overlap (IoU) under three readings of the returned numbers: percent of the
-image (what the app assumes), raw pixels, and pixels in the model's internal
-resize (pass `--model-size WxH`, taken from llama.cpp's verbose log). It
-also prints a no-skill baseline and a check for whether the model gives
-different boxes for different questions. It needs the model installed, so
+The app points by matching your words against Tesseract word boxes
+(`vision/text_locate.py`), which scored a 95% hit rate with 0.9 px mean
+error on 20 rendered scenes with known word positions (0.28s OCR per
+scene) -- text targets only, by design.
+
+`python eval_locate.py` is the older harness for the retired approach:
+it draws scenes with known box positions (colored shapes, labeled
+buttons), asks the MiniCPM-V `locate()` head to find each one, and scores
+the answers by overlap (IoU). That head measured IoU 0.000 and no longer
+drives the app, but the harness stays as the acceptance gate for any
+future vision-model grounding attempt. It needs the model installed, so
 run it on the machine that has the weights. The scoring itself is covered by
 `tests/test_locate_eval.py`, which uses a fake model.
 
