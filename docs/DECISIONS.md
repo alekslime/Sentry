@@ -1674,3 +1674,30 @@ default list. A stop-list of false-positive words: never finishes.
 **Behavior change.** Anyone relying on prefix matching with a custom keyword
 list (for example `screen` to catch `screencast`) must now list the words they
 want.
+
+---
+
+## 2026-11-09 - Pointing stays off: `locate()` measured at IoU 0.000 on hardware
+
+**Decision:** `vision.enable_locate` stays `false`. Pointing does not ship
+until a model/prompt combination passes `eval_locate.py` on real hardware.
+The `locate()` code path, grammar, and eval harness stay in the tree (all
+tested); only the feature flag stays off.
+
+**Evidence:** `python eval_locate.py --save-images eval_out` on the dev
+laptop (MiniCPM-V-2.6 Q4_K_M, 20 shape trials, 0 parse failures): mean IoU
+0.000 on the percent reading the app assumes, 0.013 on pixels, against
+0.007 for the fixed centered-box baseline. Verdict: "no reading beats the
+no-skill baseline. locate() is not localizing." A single hand-checked
+trial the same day agreed (IoU 0.000, box mostly off-image). The model
+returns a different box for nearly every question (3.6 distinct boxes per
+4-target scene), so it is attempting the task -- the coordinates are just
+wrong. Since no reading scores above baseline, this is a model failure,
+not a units-conversion bug: reinterpreting the numbers cannot fix it.
+
+**Alternatives considered.** Prompt engineering (few-shot, 0-1000 scale,
+phrasing) might help, but at ~23s per trial each experiment costs real
+time and the base rate (0.000) gives no signal to climb. A different
+vision model with native grounding is the more promising direction.
+Revisit when either is cheap to try; the harness (`eval_locate.py` +
+`vision/locate_eval.py`) is the acceptance gate.
