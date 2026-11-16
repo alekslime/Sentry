@@ -161,6 +161,20 @@ class LLMSettings(BaseModel):
             "vision.repeat_penalty's 2026-07-17 fix for the same failure mode."
         ),
     )
+    timeout_s: float | None = Field(
+        default=180.0,
+        ge=0,
+        description=(
+            "Hard timeout around each LLM generation call, in seconds -- "
+            "None disables it. A hung inference ends the turn instead of "
+            "freezing it: Aura goes red, a short apology is spoken, and "
+            "the next question is accepted. The abandoned call keeps "
+            "running in the background (Python cannot kill threads), so "
+            "the engine refuses new calls until it actually returns rather "
+            "than risk concurrent llama.cpp access (see utils/timeout.py). "
+            "180s is generous: a normal short answer takes ~1s on GPU."
+        ),
+    )
     system_prompt: str = Field(
         default=(
             "You are Sentry, a local AI desktop copilot -- not a chatbot describing "
@@ -336,6 +350,19 @@ class VisionSettings(BaseModel):
             "being aggressive enough to noticeably hurt normal caption "
             "quality -- not independently benchmarked here, revisit if "
             "real usage still shows loops, or shows degraded captions."
+        ),
+    )
+    timeout_s: float | None = Field(
+        default=300.0,
+        ge=0,
+        description=(
+            "Hard timeout around the whole vision stage "
+            "(capture + caption + OCR), in seconds -- None disables it. "
+            "Same turn-ending behavior as llm.timeout_s (red Aura, spoken "
+            "apology, ready for the next question) and the same "
+            "abandoned-thread caveat (see utils/timeout.py). 300s is "
+            "generous: a normal describe takes ~24s on CPU, worst seen "
+            "~146s on a loaded laptop."
         ),
     )
     caption_prompt: str = Field(
