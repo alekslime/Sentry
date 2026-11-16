@@ -24,9 +24,10 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Callable, TypedDict, TypeVar
+from typing import TypedDict, TypeVar
 
 from PySide6.QtWidgets import QApplication
 
@@ -47,8 +48,8 @@ from config.settings import get_settings
 from llm.screen_intent import needs_screen
 from memory.store import ConversationStore
 from utils.logger import setup_logging
-from utils.timing import TurnTimer
 from utils.timeout import CallOutcome, call_with_timeout
+from utils.timing import TurnTimer
 from vision.triggers import decide_screen_context, keyword_match
 
 logger = logging.getLogger(__name__)
@@ -810,9 +811,7 @@ def main() -> int:
 
             if turn is not None:
                 with turn.stage("llm"):
-                    llm_outcome, llm_note = _run_guarded(
-                        "llm", _llm_call, settings.llm.timeout_s
-                    )
+                    llm_outcome, llm_note = _run_guarded("llm", _llm_call, settings.llm.timeout_s)
             else:
                 llm_outcome, llm_note = _run_guarded("llm", _llm_call, settings.llm.timeout_s)
             if llm_outcome.timed_out:

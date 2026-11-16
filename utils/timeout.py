@@ -15,13 +15,11 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
-
-T = TypeVar("T")
+from typing import Any
 
 
 @dataclass(frozen=True)
-class CallOutcome(Generic[T]):
+class CallOutcome[T]:
     """What `call_with_timeout` observed. Exactly one of the three
     states holds: `timed_out`, `error is not None`, or a `value`."""
 
@@ -30,7 +28,7 @@ class CallOutcome(Generic[T]):
     error: BaseException | None = None
 
 
-def call_with_timeout(
+def call_with_timeout[T](
     func: Callable[[], T],
     timeout_s: float | None,
     *,
