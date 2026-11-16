@@ -21,6 +21,7 @@ class LLMResponseBridge(QObject):
 
     response_ready = Signal(str)  # generated reply text
     generation_failed = Signal(str)  # human-readable error message
+    generation_timed_out = Signal(str)  # timeout detail (stage + seconds)
 
     def report_response(self, text: str) -> None:
         """Callback intended to be passed to the LLM generation pipeline.
@@ -32,3 +33,9 @@ class LLMResponseBridge(QObject):
     def report_failure(self, message: str) -> None:
         """Safe to call from any thread."""
         self.generation_failed.emit(message)
+
+    def report_timeout(self, detail: str) -> None:
+        """Report a hung vision/LLM call (see utils/timeout.py). Unlike
+        `report_failure`, the main-thread slot speaks a short apology, so
+        the user hears what happened. Safe to call from any thread."""
+        self.generation_timed_out.emit(detail)

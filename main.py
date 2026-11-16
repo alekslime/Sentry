@@ -26,7 +26,7 @@ import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import TypedDict
+from typing import Callable, TypedDict, TypeVar
 
 from PySide6.QtWidgets import QApplication
 
@@ -48,6 +48,7 @@ from llm.screen_intent import needs_screen
 from memory.store import ConversationStore
 from utils.logger import setup_logging
 from utils.timing import TurnTimer
+from utils.timeout import CallOutcome, call_with_timeout
 from vision.triggers import decide_screen_context, keyword_match
 
 logger = logging.getLogger(__name__)
@@ -233,6 +234,9 @@ class _TurnState(TypedDict):
     active: bool
 
 
+_T = TypeVar("_T")
+
+
 def main() -> int:
     settings = get_settings()
     setup_logging(settings.logging)
@@ -343,6 +347,15 @@ def main() -> int:
         "speaking_turn": None,
         "active": False,
     }
+
+    # Engine-busy flags for the timeout path (see _run_guarded): set while
+    # a vision/LLM call is in flight, cleared only when the call actually
+    # RETURNS -- including after a timeout abandoned it. A new turn that
+    # finds its engine busy reports a timeout immediately instead of
+    # entering the same non-thread-safe llama context concurrently (a
+    # real GGML assert, seen before the reentrancy guard existed).
+    engine_busy_lock = threading.Lock()
+    engine_busy = {"llm": False, "vision": False}
 
     # Loaded eagerly (like the wake word / Whisper models) so the first
     # real utterance isn't delayed by a cold-start model load. Failure here
@@ -677,6 +690,45 @@ def main() -> int:
         logger.debug("Screen context added to prompt: %r", context)
         return f"[{context}]\n\nUser: {text}"
 
+    def _run_guarded(
+        engine: str, func: Callable[[], _T], timeout_s: float | None
+    ) -> tuple[CallOutcome[_T], str | None]:
+        # Runs `func` (one vision/LLM call) with a hard timeout. Returns
+        # (outcome, timeout_note): timeout_note is None unless the call
+        # timed out, in which case it describes what happened for the
+        # timeout report. Two ways to time out: the call hung past
+        # timeout_s, or the engine is still busy from a turn whose call
+        # never returned -- the latter reports immediately (no pointless
+        # wait) and, critically, never touches the engine, preserving the
+        # one-in-flight-call-per-engine invariant the reentrancy guard
+        # used to provide on its own (see engine_busy above).
+        with engine_busy_lock:
+            if engine_busy[engine]:
+                note = f"{engine} still busy from a previous turn -- not waiting"
+                logger.warning(note)
+                return CallOutcome(timed_out=True), note
+            engine_busy[engine] = True
+
+        def _call() -> _T:
+            try:
+                return func()
+            finally:
+                # Runs when the call actually returns -- including minutes
+                # after a timeout abandoned it -- which is what frees the
+                # engine for the next turn again.
+                with engine_busy_lock:
+                    engine_busy[engine] = False
+
+        outcome = call_with_timeout(_call, timeout_s, thread_name=f"{engine}-timeout-worker")
+        if not outcome.timed_out:
+            return outcome, None
+        if timeout_s is None:
+            note = f"{engine} timed out"
+        else:
+            note = f"{engine} timed out after {timeout_s:g}s"
+        logger.error("%s -- ending the turn (the hung call keeps running in the background).", note)
+        return outcome, note
+
     def _generate_worker(text: str, turn: TurnTimer | None) -> None:
         # Runs on a dedicated worker thread — never the audio callback
         # thread or the Qt main thread, same reasoning as transcription
@@ -691,9 +743,24 @@ def main() -> int:
         try:
             if turn is not None:
                 with turn.stage("vision"):
-                    prompt = _build_prompt_with_screen_context(text)
+                    vision_outcome, vision_note = _run_guarded(
+                        "vision",
+                        lambda: _build_prompt_with_screen_context(text),
+                        settings.vision.timeout_s,
+                    )
             else:
-                prompt = _build_prompt_with_screen_context(text)
+                vision_outcome, vision_note = _run_guarded(
+                    "vision",
+                    lambda: _build_prompt_with_screen_context(text),
+                    settings.vision.timeout_s,
+                )
+            if vision_outcome.timed_out:
+                assert vision_note is not None  # _run_guarded sets it exactly then
+                llm_bridge.report_timeout(vision_note)
+                return
+            if vision_outcome.error is not None:
+                raise vision_outcome.error
+            prompt = vision_outcome.value
             if prompt is None:
                 # Milestone 7, Part B.3: OCR pointing found nothing to
                 # point at for this query. The spoken "couldn't find
@@ -731,23 +798,30 @@ def main() -> int:
                     )
                     history = []
 
-            if turn is not None:
-                with turn.stage("llm"):
-                    response = llm_engine.generate(
-                        prompt,
-                        max_tokens=settings.llm.max_tokens,
-                        temperature=settings.llm.temperature,
-                        repeat_penalty=settings.llm.repeat_penalty,
-                        history=history,
-                    )
-            else:
-                response = llm_engine.generate(
+            def _llm_call() -> str:
+                assert llm_engine is not None  # worker only runs when it loaded
+                return llm_engine.generate(
                     prompt,
                     max_tokens=settings.llm.max_tokens,
                     temperature=settings.llm.temperature,
                     repeat_penalty=settings.llm.repeat_penalty,
                     history=history,
                 )
+
+            if turn is not None:
+                with turn.stage("llm"):
+                    llm_outcome, llm_note = _run_guarded(
+                        "llm", _llm_call, settings.llm.timeout_s
+                    )
+            else:
+                llm_outcome, llm_note = _run_guarded("llm", _llm_call, settings.llm.timeout_s)
+            if llm_outcome.timed_out:
+                assert llm_note is not None  # _run_guarded sets it exactly then
+                llm_bridge.report_timeout(llm_note)
+                return
+            if llm_outcome.error is not None:
+                raise llm_outcome.error
+            response = llm_outcome.value or ""
             if response:
                 # Milestone 9, Part A: persist the turn as it happens.
                 # Runs on this worker thread (a new one per query) --
@@ -868,6 +942,33 @@ def main() -> int:
         aura.set_state(AuraState.ERROR)
         island.collapse()
 
+    def on_generation_timeout(detail: str) -> None:
+        # Runs on the main thread. A vision/LLM call hung past its timeout
+        # (or the engine is still busy from an abandoned turn) -- the turn
+        # ends here, but SPOKEN, so the user hears what happened instead of
+        # staring at a stuck THINKING Aura. Mirrors on_llm_response's speech
+        # bookkeeping (tts stage + speaking_turn) so the turn timing still
+        # logs completely when on_tts_finished fires. Aura stays ERROR
+        # during the apology (it IS a failure message) and the turn is
+        # immediately ready for the next question: current_turn["active"]
+        # clears here, not at speech end.
+        logger.error("Turn timed out (%s) -- Aura -> ERROR", detail)
+        window.show_response(f"(Timed out -- {detail})")
+        current_turn["active"] = False
+        aura.set_state(AuraState.ERROR)
+        message = "Sorry, that took too long. Please try again."
+        turn = current_turn["timer"]
+        if tts_engine is not None:
+            if turn is not None:
+                turn.start_stage("tts")
+                current_turn["speaking_turn"] = turn
+            threading.Thread(target=_speak_worker, args=(message,), daemon=True).start()
+        else:
+            if turn is not None:
+                logger.info("Turn latency (timed out): %s", turn.summary())
+                current_turn["timer"] = None
+            island.collapse()
+
     def on_tts_finished() -> None:
         # Runs on the main thread. Playback ended (naturally, or via
         # TTSEngine.stop() when a new query interrupted it) — either way,
@@ -930,6 +1031,7 @@ def main() -> int:
     transcript_bridge.no_speech_detected.connect(on_no_speech_detected)
     llm_bridge.response_ready.connect(on_llm_response)
     llm_bridge.generation_failed.connect(on_llm_failed)
+    llm_bridge.generation_timed_out.connect(on_generation_timeout)
     vision_locate_bridge.box_found.connect(on_target_box_found)
     tts_bridge.finished.connect(on_tts_finished)
     tts_bridge.failed.connect(on_tts_failed)
